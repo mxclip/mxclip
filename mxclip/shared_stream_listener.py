@@ -26,9 +26,6 @@ class SharedStreamListener:
                     break
                 audio_chunk = np.frombuffer(data, np.int16)
                 self.push_audio(audio_chunk)
-        except ffmpeg.Error as e:
-            print(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
-            raise
         except Exception as e:
             print(f"Error processing audio stream: {str(e)}")
             raise
