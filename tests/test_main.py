@@ -102,11 +102,25 @@ class TestMainCLI:
         mock_stt_instance = mock_stt.return_value
         mock_listener_instance = mock_listener.return_value
         
+        # Capture the on_stt_text callback to verify its signature
+        stt_callback = None
+        def save_callback(*args, **kwargs):
+            nonlocal stt_callback
+            stt_callback = args[0]  # Save the callback function
+            return mock_stt_instance
+        mock_stt.side_effect = save_callback
+        
         # Pre-check for signal handler
         mock_signal.SIGINT = signal_type = mock.sentinel.sigint
         
         # Call the function
         _run_analyze(args)
+        
+        # Verify that the callback function accepts the actual_timestamp parameter
+        assert stt_callback is not None
+        import inspect
+        sig = inspect.signature(stt_callback)
+        assert 'actual_timestamp' in sig.parameters
         
         # Check services were initialized correctly
         mock_metrics.assert_called_once_with(port=8001)

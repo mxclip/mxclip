@@ -108,20 +108,38 @@ def _run_analyze(args) -> None:
     # Set up speech-to-text service
     transcript_buffer = []
     
-    def on_stt_text(text: str) -> None:
-        """Handle transcribed text."""
-        timestamp = time.time()
+    def on_stt_text(text: str, actual_timestamp: Optional[float] = None) -> None:
+        """Handle transcribed text.
+        
+        Args:
+            text: The transcribed text
+            actual_timestamp: Optional timestamp from the audio stream (if available)
+        """
+        # Use actual audio timestamp if available, otherwise current time
+        timestamp = actual_timestamp if actual_timestamp is not None else time.time()
         print(f"[STT] {text}")
+        
+        # Estimate the duration based on text length (more accurate than fixed multiplier)
+        def estimate_duration(text: str) -> float:
+            """Estimate speech duration based on word count and characters."""
+            words = len(text.split())
+            chars = len(text)
+            # Average English speaker: ~150 words per minute = 0.4s per word
+            # Add character-based component for longer words
+            return max(0.5, (words * 0.4) + (chars * 0.01))
+        
+        duration = estimate_duration(text)
         
         # Add to transcript buffer for potential clip subtitles
         transcript_buffer.append({
             "start": timestamp,
-            "end": timestamp + len(text) * 0.1,  # Rough estimate for subtitle duration
+            "end": timestamp + duration,
             "text": text
         })
         
         # Keep only recent transcripts
-        while transcript_buffer and transcript_buffer[0]["start"] < timestamp - 60:
+        current_time = time.time()
+        while transcript_buffer and transcript_buffer[0]["start"] < current_time - 60:
             transcript_buffer.pop(0)
     
     stt = RTSTTService(on_stt_text)

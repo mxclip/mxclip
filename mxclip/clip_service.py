@@ -98,7 +98,13 @@ class ClipService:
                 end_time_sec -= excess / 2
             
             # Run ffmpeg to generate the clip
-            input_stream = ffmpeg.input(video_path, ss=start_time_sec, t=end_time_sec - start_time_sec)
+            input_stream = ffmpeg.input(
+                video_path, 
+                ss=start_time_sec, 
+                t=end_time_sec - start_time_sec,
+                copytb=1,  # Copy time base for accurate timestamp handling
+                avoid_negative_ts='make_zero'  # Ensure no negative timestamps
+            )
             
             # Apply watermark if provided
             if self.watermark_path and os.path.exists(self.watermark_path):
@@ -145,7 +151,11 @@ class ClipService:
                     overlay,
                     output_path,
                     vf=f"subtitles={srt.name}:force_style='FontSize=24,Alignment=2,BorderStyle=3'",
-                    c='copy'
+                    ar='44100',  # Ensure consistent audio sample rate
+                    acodec='aac',  # Use AAC for audio (widely compatible)
+                    vcodec='libx264',  # Use H.264 for video
+                    preset='medium',  # Balance between quality and encoding speed
+                    movflags='+faststart'  # Optimize for web streaming
                 )
                 
                 # Clean up subtitle file after processing
@@ -155,7 +165,15 @@ class ClipService:
                     os.unlink(srt.name)
             else:
                 # No subtitles, just output the video
-                output = ffmpeg.output(overlay, output_path)
+                output = ffmpeg.output(
+                    overlay, 
+                    output_path,
+                    ar='44100',  # Ensure consistent audio sample rate
+                    acodec='aac',
+                    vcodec='libx264',
+                    preset='medium',
+                    movflags='+faststart'
+                )
                 output.run(quiet=True, overwrite_output=True)
             
             # Create JSON metadata file

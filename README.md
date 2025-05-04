@@ -9,7 +9,7 @@ MX Clipping is a Python-based system for real-time audio/video processing and au
 - Keyword detection in speech
 - Repeated phrases
 - Chat activity spikes
-- And more!
+- And more in the future
 
 ## Features
 
