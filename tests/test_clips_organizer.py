@@ -209,33 +209,71 @@ class TestClipsOrganizer:
         user2 = "count_test_user2"
         streamer_id = "count_test_streamer"
         
-        # Create clips for user1
+        # Store created files for verification
+        user1_files = []
+        user2_files = []
+        
+        # Create clips for user1 with delays between creations
         for i in range(3):
-            _, metadata_path = organizer.get_clip_path(user1, streamer_id)
+            video_path, metadata_path = organizer.get_clip_path(user1, streamer_id)
+            user1_files.append(video_path)
             
             # Create empty files (just for testing)
             metadata = {"test": "metadata"}
             organizer.save_clip_metadata(metadata_path, metadata)
             
-            video_path = metadata_path.replace(".json", ".mp4")
+            # Create the video file and ensure it's flushed to disk
             with open(video_path, 'w') as f:
-                f.write("")
+                f.write(f"Test content {i}")
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Verify file exists
+            assert os.path.exists(video_path), f"Video file {video_path} was not created"
+            
+            # Small delay to ensure file operations complete
+            time.sleep(0.1)
         
         # Create clips for user2
         for i in range(2):
-            _, metadata_path = organizer.get_clip_path(user2, streamer_id)
+            video_path, metadata_path = organizer.get_clip_path(user2, streamer_id)
+            user2_files.append(video_path)
             
             # Create empty files (just for testing)
             metadata = {"test": "metadata"}
             organizer.save_clip_metadata(metadata_path, metadata)
             
-            video_path = metadata_path.replace(".json", ".mp4")
+            # Create the video file and ensure it's flushed to disk
             with open(video_path, 'w') as f:
-                f.write("")
+                f.write(f"Test content {i}")
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Verify file exists
+            assert os.path.exists(video_path), f"Video file {video_path} was not created"
+            
+            # Small delay to ensure file operations complete
+            time.sleep(0.1)
         
-        # Get counts
+        # Manual verification of files
+        user1_dir = os.path.join(temp_clips_dir, user1)
+        user2_dir = os.path.join(temp_clips_dir, user2)
+        
+        # Debug: List all files in user directories
+        user1_dir_files = os.listdir(user1_dir) if os.path.exists(user1_dir) else []
+        user2_dir_files = os.listdir(user2_dir) if os.path.exists(user2_dir) else []
+        
+        # Count MP4 files manually
+        user1_mp4_count = sum(1 for f in user1_dir_files if f.endswith(".mp4"))
+        user2_mp4_count = sum(1 for f in user2_dir_files if f.endswith(".mp4"))
+        
+        # Get counts from the method
         counts = organizer.get_clip_count()
         
-        # Check counts - fixing the assertion to match the actual count
-        assert counts[user1] == 3  # This is correct since we created 3 clips
-        assert counts[user2] == 2 
+        # Assert using manually verified counts
+        assert user1_mp4_count == 3, f"Expected 3 MP4 files for user1, found {user1_mp4_count}: {user1_dir_files}"
+        assert user2_mp4_count == 2, f"Expected 2 MP4 files for user2, found {user2_mp4_count}: {user2_dir_files}"
+        
+        # Now check with the method's output
+        assert counts[user1] == user1_mp4_count
+        assert counts[user2] == user2_mp4_count 
