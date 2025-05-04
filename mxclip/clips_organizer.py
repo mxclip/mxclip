@@ -8,6 +8,7 @@ including folder structure, naming conventions, and metadata management.
 import os
 import json
 import time
+import uuid
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple, List
@@ -19,8 +20,8 @@ class ClipsOrganizer:
     Organizes generated clips according to a consistent folder structure and naming convention.
     
     Format:
-    clips/user1@streamer_20240502_231502.mp4
-    clips/user1@streamer_20240502_231502.json
+    clips/user1@streamer_20240502_231502_uniqueid.mp4
+    clips/user1@streamer_20240502_231502_uniqueid.json
     """
     
     def __init__(self, base_dir: str = "clips"):
@@ -58,8 +59,11 @@ class ClipsOrganizer:
         dt = datetime.fromtimestamp(timestamp)
         timestamp_str = dt.strftime("%Y%m%d_%H%M%S")
         
-        # Create filename: user@streamer_timestamp
-        filename_base = f"{user_id}@{streamer_id}_{timestamp_str}"
+        # Generate a unique identifier to prevent collisions
+        unique_id = str(uuid.uuid4())[:8]
+        
+        # Create filename: user@streamer_timestamp_uniqueid
+        filename_base = f"{user_id}@{streamer_id}_{timestamp_str}_{unique_id}"
         
         # Create user directory if it doesn't exist
         user_dir = os.path.join(self.base_dir, user_id)
