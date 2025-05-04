@@ -1,4 +1,4 @@
-# MX Clipping
+# MX Clipping 0.1
 
 Real-time AI-powered clipping and highlight detection for video content.
 
