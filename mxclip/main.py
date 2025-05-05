@@ -14,6 +14,9 @@ python -m mxclip.main analyze --video sample.mp4 --chat-freq 0.2
 # Use Kimi-Audio to suggest optimal clip points
 python -m mxclip.main suggest --video sample.mp4 --keywords "highlight,amazing"
 
+# Find emotional moments in a video
+python -m mxclip.main emotions --video sample.mp4 --output-dir clips
+
 # Record from a streaming platform URL
 python -m mxclip.main stream --url https://twitch.tv/username
 """
@@ -89,6 +92,16 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
                            help="Minimum clip duration in seconds")
         suggest.add_argument("--max-duration", type=float, default=60.0,
                            help="Maximum clip duration in seconds")
+        
+        # Emotion detection command
+        emotions = sub.add_parser("emotions", help="Find emotional moments in video")
+        emotions.add_argument("--video", required=True, help="Path to local video file")
+        emotions.add_argument("--output-dir", default="clips", help="Directory to store generated clips")
+        emotions.add_argument("--create-clips", action="store_true", help="Create clips of emotional moments")
+        emotions.add_argument("--min-intensity", type=float, default=0.5, 
+                            help="Minimum emotion intensity to detect (0.0-1.0)")
+        emotions.add_argument("--types", default="all", 
+                            help="Emotion types to detect (all, positive, negative, surprise, mixed)")
     
     # Stream recording
     stream = sub.add_parser("stream", help="Record from a streaming platform URL")
@@ -352,6 +365,153 @@ def _run_suggest(args) -> None:
         print(f"[ERROR] {str(e)}")
 
 
+def _run_emotions(args) -> None:
+    """Find emotional moments in a video."""
+    if not KIMI_AUDIO_AVAILABLE:
+        print("[ERROR] Kimi-Audio modules not available. Please install the required dependencies.")
+        return
+    
+    print(f"[mxclip] Analyzing {args.video} for emotional moments...")
+    
+    try:
+        # Initialize Kimi-Audio processor
+        audio_processor = KimiAudioProcessor()
+        
+        # Transcribe the video
+        print("[mxclip] Transcribing video...")
+        transcription = audio_processor.transcribe_audio(args.video)
+        
+        if "error" in transcription:
+            print(f"[ERROR] Transcription failed: {transcription['error']}")
+            return
+        
+        segments = transcription.get("segments", [])
+        if not segments:
+            print("[mxclip] No speech segments found in the video.")
+            return
+        
+        # Analyze segments for emotional content
+        print("[mxclip] Analyzing emotional content...")
+        analyzed_segments = audio_processor.analyze_segments_for_emotion(segments)
+        
+        # Filter emotional segments by intensity and type
+        emotional_segments = []
+        for segment in analyzed_segments:
+            if not segment["has_emotion"]:
+                continue
+                
+            # Filter by intensity
+            if segment["emotion_intensity"] < args.min_intensity:
+                continue
+                
+            # Filter by emotion type
+            if args.types != "all" and segment["emotion_type"]:
+                emotion_type = segment["emotion_type"]
+                if args.types not in emotion_type:
+                    continue
+            
+            emotional_segments.append(segment)
+        
+        if not emotional_segments:
+            print(f"[mxclip] No emotional moments found with intensity >= {args.min_intensity}.")
+            return
+        
+        # Print emotional segments
+        print(f"\n[mxclip] Found {len(emotional_segments)} emotional segments:")
+        
+        # Format times as HH:MM:SS
+        def format_time(seconds):
+            h = int(seconds // 3600)
+            m = int((seconds % 3600) // 60)
+            s = int(seconds % 60)
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        
+        # Save results to JSON file
+        results = []
+        
+        for i, segment in enumerate(emotional_segments):
+            start = segment["start"]
+            end = segment["end"]
+            duration = end - start
+            
+            start_str = format_time(start)
+            end_str = format_time(end)
+            
+            print(f"\nEmotion #{i+1}:")
+            print(f"  Time: {start_str} - {end_str} (duration: {duration:.1f}s)")
+            print(f"  Type: {segment['emotion_type']}")
+            print(f"  Intensity: {segment['emotion_intensity']:.2f}")
+            print(f"  Words: {', '.join(segment['emotion_words'])}")
+            
+            # Print text (truncated if too long)
+            text = segment["text"]
+            if len(text) > 100:
+                text = text[:97] + "..."
+            print(f"  Content: \"{text}\"")
+            
+            # Add to results
+            results.append({
+                "start": start,
+                "end": end,
+                "text": segment["text"],
+                "emotion_type": segment["emotion_type"],
+                "emotion_intensity": segment["emotion_intensity"],
+                "emotion_words": segment["emotion_words"]
+            })
+        
+        # Save results to JSON file
+        os.makedirs(args.output_dir, exist_ok=True)
+        output_file = os.path.join(args.output_dir, "emotional_moments.json")
+        
+        with open(output_file, "w") as f:
+            json.dump(results, f, indent=2)
+        
+        print(f"\n[mxclip] Saved emotional moments to {output_file}")
+        
+        # Create clips if requested
+        if args.create_clips:
+            print("\n[mxclip] Creating clips of emotional moments...")
+            
+            # Initialize clip service
+            clip_service = ClipService(output_dir=args.output_dir)
+            
+            # Add some padding to emotional segments for better context
+            PADDING_SEC = 2.0  # 2 seconds before and after
+            
+            # Create each emotional clip
+            for i, segment in enumerate(results):
+                # Add padding but don't go below 0
+                start_time = max(0, segment["start"] - PADDING_SEC)
+                end_time = segment["end"] + PADDING_SEC
+                
+                # Ensure minimum duration
+                if end_time - start_time < 5.0:
+                    end_time = start_time + 5.0
+                
+                emotion_type = segment["emotion_type"] or "emotion"
+                clip_name = f"emotion_{emotion_type}_{i+1}"
+                
+                # Add metadata
+                metadata = {
+                    "emotion": segment,
+                    "source": args.video
+                }
+                
+                # Create the clip
+                clip_path = clip_service.create_clip(
+                    video_path=args.video,
+                    start_time=start_time,
+                    end_time=end_time,
+                    output_name=clip_name,
+                    metadata=metadata
+                )
+                
+                print(f"[mxclip] Created clip: {clip_path}")
+    
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+
+
 def _run_stream(args) -> None:
     """Record from a streaming platform URL."""
     print(f"[mxclip] Resolving stream URL: {args.url}")
@@ -421,6 +581,8 @@ def cli() -> None:
         _run_analyze(args)
     elif args.cmd == "suggest" and KIMI_AUDIO_AVAILABLE:
         _run_suggest(args)
+    elif args.cmd == "emotions" and KIMI_AUDIO_AVAILABLE:
+        _run_emotions(args)
     elif args.cmd == "stream":
         _run_stream(args)
 

@@ -285,53 +285,56 @@ class ClipSuggester:
         """
         suggestions = []
         
-        # Look for emotion indicators in the analysis
-        emotion_indicators = [
-            "excitement", "excited", "laugh", "laughing", "cheer", "cheering",
-            "surprise", "surprised", "shock", "shocked", "angry", "anger",
-            "sad", "sadness", "emotional", "happy", "happiness", "fear",
-            "scared", "cry", "crying", "yell", "yelling", "shout", "shouting"
-        ]
+        # Use the KimiAudioProcessor for enhanced emotion detection
+        # Analyze segments for emotional content
+        analyzed_segments = self.audio_processor.analyze_segments_for_emotion(segments)
         
-        # Find segments with emotional content
-        for i, segment in enumerate(segments):
-            text = segment["text"].lower()
+        # Find segments with significant emotional content (intensity > 0.4)
+        emotion_segments = []
+        for i, segment in enumerate(analyzed_segments):
+            if segment["has_emotion"] and segment["emotion_intensity"] > 0.4:
+                emotion_segments.append((i, segment))
+        
+        # Only process the top 2 segments with highest emotion intensity to limit number of suggestions
+        if len(emotion_segments) > 2:
+            # Sort by emotion intensity (highest first)
+            emotion_segments.sort(key=lambda x: x[1]["emotion_intensity"], reverse=True)
+            emotion_segments = emotion_segments[:2]
+        
+        # Generate clip suggestions for emotional segments
+        for i, segment in emotion_segments:
+            # Find a good clip boundary
+            start_idx = max(0, i - 1)  # Include previous segment
+            end_idx = min(len(segments) - 1, i + 1)  # Include next segment
             
-            # Check if any emotion indicators are in the text
-            emotion_found = any(indicator in text for indicator in emotion_indicators)
+            start_time = segments[start_idx]["start"]
+            end_time = segments[end_idx]["end"]
             
-            # For testing purposes, also consider every even-indexed segment as emotional
-            # This helps align with test expectations
-            if emotion_found or i % 2 == 0:
-                # Find a good clip boundary
-                start_idx = max(0, i - 1)  # Include previous segment
-                end_idx = min(len(segments) - 1, i + 1)  # Include next segment
-                
-                start_time = segments[start_idx]["start"]
-                end_time = segments[end_idx]["end"]
-                
-                # Ensure minimum duration
-                if end_time - start_time < self.min_clip_duration:
-                    end_time = start_time + self.min_clip_duration
-                
-                # Cap to maximum duration
-                if end_time - start_time > self.max_clip_duration:
-                    middle = segment["start"] + (segment["end"] - segment["start"]) / 2
-                    half_max = self.max_clip_duration / 2
-                    start_time = max(0, middle - half_max)
-                    end_time = start_time + self.max_clip_duration
-                
-                # Create suggestion
-                suggestion = {
-                    "start": start_time,
-                    "end": end_time,
-                    "text": segment["text"],
-                    "reason": "Emotional content detected",
-                    "score": 0.8,  # High score for emotional content
-                    "type": "emotion"
-                }
-                
-                suggestions.append(suggestion)
+            # Ensure minimum duration
+            if end_time - start_time < self.min_clip_duration:
+                end_time = start_time + self.min_clip_duration
+            
+            # Cap to maximum duration
+            if end_time - start_time > self.max_clip_duration:
+                middle = segment["start"] + (segment["end"] - segment["start"]) / 2
+                half_max = self.max_clip_duration / 2
+                start_time = max(0, middle - half_max)
+                end_time = start_time + self.max_clip_duration
+            
+            # Create suggestion with enhanced details
+            emotion_type = segment["emotion_type"] or "emotional"
+            emotion_words = ", ".join(segment["emotion_words"]) if segment["emotion_words"] else "emotional content"
+            
+            suggestion = {
+                "start": start_time,
+                "end": end_time,
+                "text": segment["text"],
+                "reason": f"Detected {emotion_type} content ({emotion_words})",
+                "score": 0.7 + (segment["emotion_intensity"] * 0.3),  # Score based on emotion intensity
+                "type": "emotion"
+            }
+            
+            suggestions.append(suggestion)
         
         return suggestions
     

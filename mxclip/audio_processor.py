@@ -26,6 +26,33 @@ class KimiAudioProcessor:
     - Emotional tone analysis
     """
     
+    # Common emotion indicators for improved emotion detection
+    EMOTION_INDICATORS = {
+        'positive': [
+            "excitement", "excited", "laugh", "laughing", "cheer", "cheering",
+            "happy", "happiness", "joy", "joyful", "amazing", "wow", "awesome",
+            "incredible", "fantastic", "wonderful", "great", "excellent", "brilliant",
+            "love", "epic", "beautiful", "superb", "perfect", "hype", "hyped"
+        ],
+        'negative': [
+            "angry", "anger", "sad", "sadness", "fear", "scared", "cry", "crying",
+            "disappointed", "disappointing", "upset", "mad", "furious", "frustrated",
+            "shocked", "annoyed", "annoying", "hate", "terrible", "awful", "horrible",
+            "devastated", "anxious", "stressed", "depressed", "miserable"
+        ],
+        'surprise': [
+            "surprise", "surprised", "shock", "shocked", "wow", "whoa", "unbelievable",
+            "unexpected", "omg", "oh my god", "holy", "no way", "what the", "wtf",
+            "amazing", "incredible", "astonishing", "stunning", "mindblowing"
+        ],
+        'intensity': [
+            "very", "extremely", "incredibly", "absolutely", "totally",
+            "completely", "utterly", "super", "so", "really", "truly",
+            "intensely", "deeply", "highly", "extraordinarily", "exceptionally",
+            "yell", "yelling", "shout", "shouting", "scream", "screaming"
+        ]
+    }
+    
     def __init__(
         self, 
         model_name: str = "kimi-audio-7b-instruct",
@@ -59,7 +86,12 @@ class KimiAudioProcessor:
     def _load_model(self) -> None:
         """Load the Kimi-Audio model and processor."""
         try:
-            from transformers import AutoProcessor, AutoModelForCausalLM
+            # Allow this import to be mocked in tests
+            try:
+                from transformers import AutoProcessor, AutoModelForCausalLM
+            except ImportError:
+                logger.warning("Transformers library not found. Operating in mock/test mode.")
+                return
             
             logger.info(f"Loading Kimi-Audio model '{self.model_name}'...")
             
@@ -297,6 +329,92 @@ class KimiAudioProcessor:
             results[keyword] = occurrences
         
         return results
+    
+    def detect_emotional_content(self, text: str) -> Dict[str, Any]:
+        """
+        Analyze text to detect emotional content and its intensity.
+        
+        Args:
+            text: Text to analyze for emotional content
+            
+        Returns:
+            Dictionary with emotional content analysis
+        """
+        text_lower = text.lower()
+        result = {
+            "has_emotion": False,
+            "emotion_type": None,
+            "emotion_words": [],
+            "intensity": 0.0  # 0.0-1.0 scale
+        }
+        
+        # Check for emotion indicators
+        emotion_words = []
+        
+        # Check positive emotions
+        positive_matches = [word for word in self.EMOTION_INDICATORS['positive'] if word in text_lower]
+        if positive_matches:
+            result["has_emotion"] = True
+            result["emotion_type"] = "positive"
+            emotion_words.extend(positive_matches)
+        
+        # Check negative emotions
+        negative_matches = [word for word in self.EMOTION_INDICATORS['negative'] if word in text_lower]
+        if negative_matches:
+            result["has_emotion"] = True
+            result["emotion_type"] = "negative" if not result["emotion_type"] else "mixed"
+            emotion_words.extend(negative_matches)
+        
+        # Check surprise emotions
+        surprise_matches = [word for word in self.EMOTION_INDICATORS['surprise'] if word in text_lower]
+        if surprise_matches:
+            result["has_emotion"] = True
+            if not result["emotion_type"]:
+                result["emotion_type"] = "surprise"
+            elif result["emotion_type"] != "mixed":
+                result["emotion_type"] = f"{result['emotion_type']}_surprise"
+            emotion_words.extend(surprise_matches)
+        
+        # Check intensity indicators
+        intensity_matches = [word for word in self.EMOTION_INDICATORS['intensity'] if word in text_lower]
+        intensity_value = min(1.0, len(intensity_matches) * 0.2)  # Scale intensity by number of matches
+        
+        # Calculate overall intensity (based on emotion words + intensity indicators)
+        base_intensity = min(1.0, len(emotion_words) * 0.15)  # Base intensity from emotion word count
+        result["intensity"] = max(base_intensity, intensity_value)
+        
+        result["emotion_words"] = emotion_words
+        
+        return result
+    
+    def analyze_segments_for_emotion(self, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analyze transcript segments to find emotional content.
+        
+        Args:
+            segments: List of transcript segments
+            
+        Returns:
+            List of segments with emotion analysis
+        """
+        analyzed_segments = []
+        
+        for segment in segments:
+            # Add emotional analysis to each segment
+            emotion_analysis = self.detect_emotional_content(segment["text"])
+            
+            # Add analysis to segment
+            enriched_segment = segment.copy()
+            enriched_segment.update({
+                "has_emotion": emotion_analysis["has_emotion"],
+                "emotion_type": emotion_analysis["emotion_type"],
+                "emotion_words": emotion_analysis["emotion_words"],
+                "emotion_intensity": emotion_analysis["intensity"]
+            })
+            
+            analyzed_segments.append(enriched_segment)
+        
+        return analyzed_segments
     
     def generate_audio_caption(self, audio_path: str) -> str:
         """
