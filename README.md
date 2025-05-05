@@ -1,4 +1,4 @@
-# MX Clipping 0.1
+# MX Clipping 1.0
 
 Real-time AI-powered clipping and highlight detection for video content.
 
@@ -9,7 +9,9 @@ MX Clipping is a Python-based system for real-time audio/video processing and au
 - Keyword detection in speech
 - Repeated phrases
 - Chat activity spikes
-- And more in the future
+- Audio content analysis (NEW)
+- Emotional moment detection (NEW)
+- Platform stream recording (NEW)
 
 ## Features
 
@@ -18,6 +20,9 @@ MX Clipping is a Python-based system for real-time audio/video processing and au
 - **Trigger Detection**: Identify clip-worthy moments based on speech, repetition, or chat activity
 - **Automatic Clip Generation**: Extract, process, and save video clips with subtitles
 - **Metadata Management**: Store organized metadata for each clip
+- **Advanced Audio Analysis**: Analyze audio content for emotional tone, keywords, and key moments (NEW)
+- **Intelligent Clip Suggestion**: Get smart clip suggestions based on audio content understanding (NEW)
+- **Platform Stream Recording**: Record streams directly from Twitch, YouTube, and more with URL resolution (NEW)
 
 ## Components
 
@@ -33,6 +38,10 @@ MX Clipping is a Python-based system for real-time audio/video processing and au
 - `TriggerDetector`: Detection of keywords, repeated phrases, and chat activity spikes
 - `ConfigLoader`: Management of user-specific configurations
 - `ClipsOrganizer`: Organization of clips with consistent naming and metadata
+- `KimiAudioProcessor`: Advanced audio processing and understanding with Kimi-Audio (NEW)
+- `ClipSuggester`: Smart clip suggestions based on content relevance (NEW)
+- `StreamResolver`: Resolution of platform URLs to direct stream URLs (NEW)
+- `LiveRecordingService`: Recording from streaming platforms (NEW)
 
 ## Installation
 
@@ -134,6 +143,100 @@ metadata = organizer.generate_metadata(
 )
 
 organizer.save_clip_metadata(metadata_path, metadata)
+```
+
+### Advanced Audio Analysis (NEW)
+
+```python
+from mxclip.audio_processor import KimiAudioProcessor
+
+# Initialize the Kimi-Audio processor
+processor = KimiAudioProcessor()
+
+# Transcribe audio with timestamps
+transcription = processor.transcribe_audio("video.mp4")
+print(f"Transcription: {transcription['text']}")
+
+# Analyze audio content
+analysis = processor.analyze_audio_content("video.mp4")
+print(f"Emotion: {analysis.get('emotion')}")
+print(f"Tone: {analysis.get('tone')}")
+
+# Generate an audio caption
+caption = processor.generate_audio_caption("video.mp4")
+print(f"Caption: {caption}")
+```
+
+### Intelligent Clip Suggestion (NEW)
+
+```python
+from mxclip.clip_suggestion import ClipSuggester
+
+# Initialize the clip suggester
+suggester = ClipSuggester()
+
+# Get clip suggestions
+suggestions = suggester.suggest_clips(
+    media_path="video.mp4",
+    keywords=["exciting", "amazing", "victory"],
+    max_suggestions=5
+)
+
+# Process suggestions
+for i, suggestion in enumerate(suggestions):
+    print(f"Suggestion #{i+1}:")
+    print(f"  Time: {suggestion['start']} - {suggestion['end']}")
+    print(f"  Reason: {suggestion['reason']}")
+    print(f"  Score: {suggestion['score']}")
+```
+
+### Stream Recording (NEW)
+
+```python
+from mxclip.stream_resolver import StreamResolver
+from mxclip.live_recording_service import LiveRecordingService
+
+# Resolve a platform URL
+resolver = StreamResolver()
+direct_url, error = resolver.resolve_stream_url("https://twitch.tv/username")
+
+# Record from a platform URL
+def on_recording_complete(output_file, success, error_message):
+    print(f"Recording completed: {output_file}")
+
+recorder = LiveRecordingService(
+    user_url="https://twitch.tv/username",
+    output_dir="recordings",
+    segment_time=300,  # 5 minute segments
+    completion_callback=on_recording_complete
+)
+
+# Start recording
+recorder.start()
+
+# Later, stop recording
+recorder.stop()
+```
+
+## Command Line Interface (CLI)
+
+MX Clipping includes a command-line interface for common tasks:
+
+```bash
+# Record microphone for 5 seconds and transcribe
+python -m mxclip.main record --duration 5
+
+# Play a local video file and transcribe its audio in real time
+python -m mxclip.main video --file sample.mp4
+
+# Run video analysis with chat trigger and clip generation
+python -m mxclip.main analyze --video sample.mp4 --chat-freq 0.2
+
+# Use Kimi-Audio to suggest optimal clip points (NEW)
+python -m mxclip.main suggest --video sample.mp4 --keywords "highlight,amazing"
+
+# Record from a streaming platform URL (NEW)
+python -m mxclip.main stream --url https://twitch.tv/username
 ```
 
 ## Integration Example

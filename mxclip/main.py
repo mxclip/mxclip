@@ -10,6 +10,12 @@ python -m mxclip.main video --file sample.mp4
 
 # Run video analysis with chat trigger and clip generation
 python -m mxclip.main analyze --video sample.mp4 --chat-freq 0.2
+
+# Use Kimi-Audio to suggest optimal clip points
+python -m mxclip.main suggest --video sample.mp4 --keywords "highlight,amazing"
+
+# Record from a streaming platform URL
+python -m mxclip.main stream --url https://twitch.tv/username
 """
 import argparse
 import logging
@@ -17,7 +23,8 @@ import time
 import os
 import signal
 import sys
-from typing import Dict, Any, Optional
+import json
+from typing import Dict, Any, Optional, List
 
 from .stt_service import STTService
 from .realtime_stt_service import RTSTTService
@@ -26,6 +33,18 @@ from .chat_service import MockChatService, ChatTrigger
 from .clip_service import ClipService
 from .user_processor import UserProcessorManager, TriggerEvent
 from .metrics import initialize_metrics, get_metrics_service
+from .stream_resolver import StreamResolver
+from .live_recording_service import LiveRecordingService
+
+# Import Kimi-Audio modules if available
+try:
+    from .audio_processor import KimiAudioProcessor
+    from .clip_suggestion import ClipSuggester
+    KIMI_AUDIO_AVAILABLE = True
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("Kimi-Audio modules not available. Some features will be disabled.")
+    KIMI_AUDIO_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +74,31 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
                        help="Average time between chat messages in seconds")
     analyze.add_argument("--metrics-port", type=int, default=8000, 
                        help="Port to expose Prometheus metrics")
+    
+    # Kimi-Audio clip suggestions
+    if KIMI_AUDIO_AVAILABLE:
+        suggest = sub.add_parser("suggest", help="Use Kimi-Audio to suggest optimal clip points")
+        suggest.add_argument("--video", required=True, help="Path to local video file")
+        suggest.add_argument("--keywords", help="Comma-separated list of keywords to prioritize")
+        suggest.add_argument("--output-dir", default="clips", help="Directory to store generated clips")
+        suggest.add_argument("--max-suggestions", type=int, default=5, 
+                           help="Maximum number of clip suggestions")
+        suggest.add_argument("--create-clips", action="store_true", 
+                           help="Automatically create clips from suggestions")
+        suggest.add_argument("--min-duration", type=float, default=5.0,
+                           help="Minimum clip duration in seconds")
+        suggest.add_argument("--max-duration", type=float, default=60.0,
+                           help="Maximum clip duration in seconds")
+    
+    # Stream recording
+    stream = sub.add_parser("stream", help="Record from a streaming platform URL")
+    stream.add_argument("--url", required=True, help="Platform URL (Twitch, YouTube, etc.)")
+    stream.add_argument("--output-dir", default="recordings", help="Directory to store recordings")
+    stream.add_argument("--segment-time", type=int, default=300, 
+                      help="Length of each recording segment in seconds")
+    stream.add_argument("--quality", default="best", help="Stream quality (best, worst, 720p, etc.)")
+    stream.add_argument("--max-duration", type=int, default=None,
+                      help="Maximum recording duration in seconds (None for unlimited)")
 
 
 def _run_record(duration: int) -> None:
@@ -200,6 +244,151 @@ def _run_analyze(args) -> None:
             stt.shutdown()
 
 
+def _run_suggest(args) -> None:
+    """Run Kimi-Audio clip suggestion."""
+    if not KIMI_AUDIO_AVAILABLE:
+        print("[ERROR] Kimi-Audio modules not available. Please install the required dependencies.")
+        return
+    
+    # Parse keywords if provided
+    keywords = []
+    if args.keywords:
+        keywords = [k.strip() for k in args.keywords.split(",")]
+    
+    print(f"[mxclip] Analyzing {args.video} for optimal clip points...")
+    if keywords:
+        print(f"[mxclip] Looking for keywords: {', '.join(keywords)}")
+    
+    try:
+        # Initialize Kimi-Audio processor
+        audio_processor = KimiAudioProcessor()
+        
+        # Initialize clip suggester
+        clip_suggester = ClipSuggester(
+            audio_processor=audio_processor,
+            min_clip_duration=args.min_duration,
+            max_clip_duration=args.max_duration
+        )
+        
+        # Get clip suggestions
+        suggestions = clip_suggester.suggest_clips(
+            media_path=args.video,
+            keywords=keywords,
+            max_suggestions=args.max_suggestions
+        )
+        
+        if not suggestions:
+            print("[mxclip] No clip suggestions found.")
+            return
+        
+        # Print suggestions
+        print(f"\n[mxclip] Found {len(suggestions)} clip suggestions:")
+        for i, suggestion in enumerate(suggestions):
+            start = suggestion["start"]
+            end = suggestion["end"]
+            duration = end - start
+            
+            # Format times as HH:MM:SS
+            def format_time(seconds):
+                h = int(seconds // 3600)
+                m = int((seconds % 3600) // 60)
+                s = int(seconds % 60)
+                return f"{h:02d}:{m:02d}:{s:02d}"
+            
+            start_str = format_time(start)
+            end_str = format_time(end)
+            
+            print(f"\nSuggestion #{i+1}:")
+            print(f"  Time: {start_str} - {end_str} (duration: {duration:.1f}s)")
+            print(f"  Reason: {suggestion['reason']}")
+            print(f"  Score: {suggestion['score']:.2f}")
+            
+            # Print text preview (truncated if too long)
+            text = suggestion.get("text", "")
+            if text:
+                if len(text) > 100:
+                    text = text[:97] + "..."
+                print(f"  Content: \"{text}\"")
+        
+        # Save suggestions to JSON file
+        output_file = os.path.join(args.output_dir, "clip_suggestions.json")
+        os.makedirs(args.output_dir, exist_ok=True)
+        
+        with open(output_file, "w") as f:
+            json.dump(suggestions, f, indent=2)
+        
+        print(f"\n[mxclip] Saved suggestions to {output_file}")
+        
+        # Create clips if requested
+        if args.create_clips:
+            print("\n[mxclip] Creating clips from suggestions...")
+            
+            # Initialize clip service
+            clip_service = ClipService(output_dir=args.output_dir)
+            
+            # Create each suggested clip
+            for i, suggestion in enumerate(suggestions):
+                clip_name = f"suggested_clip_{i+1}"
+                
+                # Add metadata
+                metadata = {
+                    "suggestion": suggestion,
+                    "source": args.video,
+                    "keywords": keywords
+                }
+                
+                # Create the clip
+                clip_path = clip_service.create_clip(
+                    video_path=args.video,
+                    start_time=suggestion["start"],
+                    end_time=suggestion["end"],
+                    output_name=clip_name,
+                    metadata=metadata
+                )
+                
+                print(f"[mxclip] Created clip: {clip_path}")
+    
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+
+
+def _run_stream(args) -> None:
+    """Record from a streaming platform URL."""
+    print(f"[mxclip] Resolving stream URL: {args.url}")
+    
+    # Initialize the recording service
+    def recording_complete(output_file, success, error_message):
+        if success:
+            print(f"[mxclip] Recording completed: {output_file}")
+        else:
+            print(f"[mxclip] Recording failed: {error_message}")
+    
+    recording_service = LiveRecordingService(
+        user_url=args.url,
+        output_dir=args.output_dir,
+        segment_time=args.segment_time,
+        quality=args.quality,
+        max_duration=args.max_duration,
+        completion_callback=recording_complete
+    )
+    
+    # Start recording
+    if recording_service.start():
+        print(f"[mxclip] Recording started. Press Ctrl+C to stop.")
+        
+        try:
+            # Keep running until interrupted
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[mxclip] Stopping recording...")
+        finally:
+            recording_service.stop()
+            print("[mxclip] Recording stopped.")
+    else:
+        print(f"[ERROR] Failed to start recording: {recording_service.error}")
+
+
 def _on_clip_created(clip_path: str, clip_info: Dict[str, Any]) -> None:
     """Handle clip creation event."""
     print(f"[CLIP] Created: {clip_path}")
@@ -230,6 +419,10 @@ def cli() -> None:
         _run_video(args.file)
     elif args.cmd == "analyze":
         _run_analyze(args)
+    elif args.cmd == "suggest" and KIMI_AUDIO_AVAILABLE:
+        _run_suggest(args)
+    elif args.cmd == "stream":
+        _run_stream(args)
 
 
 if __name__ == "__main__":
