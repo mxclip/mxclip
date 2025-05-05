@@ -9,5 +9,3 @@ transformers>=4.36.0
 sentencepiece>=0.1.99
 accelerate>=0.20.0
 flash-attn>=2.3.0; platform_system != "Darwin" or platform_machine != "arm64"
-transformers>=4.30.0
-torch>=2.0.0
