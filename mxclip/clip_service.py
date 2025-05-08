@@ -51,6 +51,7 @@ class ClipService:
         self.watermark_position = watermark_position
         self.watermark_size = watermark_size
         self.max_duration = max_duration
+        self.last_clip_path = None
         
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
@@ -61,7 +62,9 @@ class ClipService:
         center_ts: float,
         reason: str,
         subtitles: Optional[List[Tuple[float, float, str]]] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        output_path: Optional[str] = None,
+        metadata_path: Optional[str] = None
     ) -> Optional[str]:
         """
         Create a video clip centered around the specified timestamp.
@@ -72,13 +75,26 @@ class ClipService:
             reason: Reason for creating the clip
             subtitles: List of subtitles as (start_time, end_time, text) tuples
             metadata: Additional metadata to include in the JSON file
+            output_path: Custom path for the output video (overrides default path)
+            metadata_path: Custom path for the metadata JSON (overrides default path)
         
         Returns:
             Path to the generated clip or None if an error occurred
         """
         start_time = time.time()
         clip_id = f"{int(center_ts)}_{int(time.time())}"
-        output_path = os.path.join(self.output_dir, f"clip_{clip_id}.mp4")
+        
+        # Use custom output path if provided, otherwise use default
+        if not output_path:
+            output_path = os.path.join(self.output_dir, f"clip_{clip_id}.mp4")
+            
+        # Make sure the output directory exists
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+        # Use custom metadata path if provided, otherwise derive from output path
+        if not metadata_path and output_path:
+            # Change extension from .mp4 to .json
+            metadata_path = os.path.splitext(output_path)[0] + ".json"
         
         try:
             # Get video duration using ffprobe
@@ -176,11 +192,14 @@ class ClipService:
                 )
                 output.run(quiet=True, overwrite_output=True)
             
+            # Store the last clip path for later reference
+            self.last_clip_path = output_path
+            
             # Create JSON metadata file
-            json_path = os.path.join(self.output_dir, f"clip_{clip_id}.json")
             json_data = {
                 "clip_id": clip_id,
                 "source": video_path,
+                "output_path": output_path,
                 "center_timestamp": center_ts,
                 "clip_start": start_time_sec,
                 "clip_end": end_time_sec,
@@ -192,8 +211,11 @@ class ClipService:
             if metadata:
                 json_data.update(metadata)
             
-            with open(json_path, 'w') as f:
-                json.dump(json_data, f, indent=2)
+            if metadata_path:
+                # Make sure the metadata directory exists
+                os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
+                with open(metadata_path, 'w') as f:
+                    json.dump(json_data, f, indent=2)
             
             logger.info(f"Clip successfully created: {output_path}")
             return output_path
@@ -207,6 +229,15 @@ class ClipService:
                 except:
                     pass
             return None
+    
+    def get_last_clip_path(self) -> Optional[str]:
+        """
+        Get the path of the last created clip.
+        
+        Returns:
+            Path to the last created clip or None if no clip has been created
+        """
+        return self.last_clip_path
     
     def _format_srt_time(self, seconds: float) -> str:
         """

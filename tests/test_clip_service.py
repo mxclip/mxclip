@@ -22,18 +22,19 @@ def temp_output_dir():
 
 @pytest.fixture
 def mock_video_info():
-    """Create mock video information for ffmpeg.probe."""
+    """Create mock video information for testing."""
     return {
         'format': {
-            'duration': '120.0',  # 2 minutes video
+            'duration': '120.0',  # 2 minute video
             'bit_rate': '1000000',
-            'size': '15000000'
+            'format_name': 'mp4',
+            'nb_streams': 2
         },
         'streams': [
             {
                 'codec_type': 'video',
-                'width': 1280,
-                'height': 720,
+                'width': 1920,
+                'height': 1080,
                 'avg_frame_rate': '30/1'
             },
             {
@@ -79,6 +80,7 @@ def test_clip_service_init(mock_ffmpeg, temp_output_dir):
     assert service.watermark_position == watermark_position
     assert service.watermark_size == watermark_size
     assert service.max_duration == max_duration
+    assert service.last_clip_path is None
     
     # Verify directory was created
     assert os.path.exists(output_dir)
@@ -141,6 +143,10 @@ def test_clip_duration_within_limits(mock_ffmpeg, temp_output_dir, mock_video_in
     assert metadata['clip_end'] == end_time
     assert metadata['reason'] == reason
     
+    # Verify last_clip_path was updated
+    assert service.last_clip_path == clip_path
+    assert service.get_last_clip_path() == clip_path
+
 
 @patch('mxclip.clip_service.ffmpeg')
 def test_clip_max_duration_enforced(mock_ffmpeg, temp_output_dir, mock_video_info):
@@ -189,6 +195,9 @@ def test_clip_max_duration_enforced(mock_ffmpeg, temp_output_dir, mock_video_inf
     
     # Verify it's close to the max (within 1 second margin)
     assert service.max_duration - 1 <= actual_duration <= service.max_duration + 1
+    
+    # Verify last_clip_path was updated
+    assert service.last_clip_path == clip_path
 
 
 @patch('mxclip.clip_service.ffmpeg')
@@ -232,4 +241,51 @@ def test_subtitles_added_to_clip(mock_ffmpeg, temp_output_dir, mock_video_info):
     output_args = mock_ffmpeg.output.call_args
     
     # Check that vf parameter contains subtitles
-    assert any('subtitles=' in str(arg) for arg in output_args[1].values()) 
+    assert any('subtitles=' in str(arg) for arg in output_args[1].values())
+
+
+@patch('mxclip.clip_service.ffmpeg')
+def test_custom_output_paths(mock_ffmpeg, temp_output_dir, mock_video_info):
+    """Test using custom output and metadata paths."""
+    # Setup
+    video_path = "test_video.mp4"
+    center_ts = 60.0
+    reason = "test_reason"
+    
+    # Create custom paths
+    custom_output_dir = os.path.join(temp_output_dir, "custom", "path")
+    custom_output_path = os.path.join(custom_output_dir, "custom_clip.mp4")
+    custom_metadata_path = os.path.join(custom_output_dir, "custom_metadata.json")
+    
+    # Configure mocks
+    mock_ffmpeg.probe.return_value = mock_video_info
+    
+    # Create a service
+    service = ClipService(output_dir=temp_output_dir)
+    
+    # Mock the ffmpeg calls
+    mock_ffmpeg.input.return_value = MagicMock()
+    output_mock = MagicMock()
+    mock_ffmpeg.output.return_value = output_mock
+    
+    # Execute with custom paths
+    clip_path = service.create_clip(
+        video_path=video_path,
+        center_ts=center_ts,
+        reason=reason,
+        output_path=custom_output_path,
+        metadata_path=custom_metadata_path
+    )
+    
+    # Verify paths
+    assert clip_path == custom_output_path
+    assert service.last_clip_path == custom_output_path
+    assert os.path.exists(custom_output_dir)  # Directory was created
+    assert os.path.exists(custom_metadata_path)  # Metadata file was created
+    
+    # Load and check metadata
+    with open(custom_metadata_path, 'r') as f:
+        metadata = json.load(f)
+    
+    assert metadata['output_path'] == custom_output_path
+    assert metadata['reason'] == reason 
