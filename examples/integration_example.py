@@ -62,413 +62,189 @@ try:
 except ImportError:
     logger.warning("Learning modules not available. Adaptive learning will be disabled.")
 
-def main(video_file: str):
+def main(video_path):
     """
-    Run an integrated example of MX Clipping with new components.
+    Run the integrated example with all MX Clipping components.
     
     Args:
-        video_file: Path to video file to process
+        video_path: Path to the video file to process
     """
-    # Access global variables
-    global learning_available, kimi_audio_available
-    global feedback_tracker, preference_model, suggestion_optimizer, model_finetuner, trigger_detectors
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     
-    # Step 1: Set up the config loader and load user configs
+    # Initialize configuration loader and load user configs
     config_loader = ConfigLoader(config_dir="configs")
     
-    # For demo, we'll use a few predefined users
-    users = ["user1", "user2"]
-    user_configs = {}
+    user1_config = config_loader.load_config("user1")
+    logging.info(f"Loaded config for user1: {user1_config['keywords']}")
     
-    for user_id in users:
-        # Update with custom keywords for demo
-        if user_id == "user1":
-            config_loader.update_config(user_id, {
-                "keywords": ["awesome", "amazing", "wow"],
-                "enable_repeat_check": True,
-                "repeat_threshold": 2
-            })
-        elif user_id == "user2":
-            config_loader.update_config(user_id, {
-                "keywords": ["interesting", "cool", "nice"],
-                "enable_chat_check": True,
-                "chat_activity_threshold": 3
-            })
-        
-        # Load the configs
-        user_configs[user_id] = config_loader.load_config(user_id)
-        logger.info(f"Loaded config for {user_id}: {user_configs[user_id]['keywords']}")
+    user2_config = config_loader.load_config("user2")
+    logging.info(f"Loaded config for user2: {user2_config['keywords']}")
     
-    # Step 2: Set up the clips organizer
+    # Initialize core services
     clips_organizer = ClipsOrganizer(base_dir="clips")
-    
-    # For the demo, we'll use a static streamer ID
-    streamer_id = "demo_streamer"
-    
-    # Step 3: Set up the clip service
     clip_service = ClipService(output_dir="clips")
     
-    # Step 4: Initialize learning services if available
+    # Initialize learning services
     feedback_tracker = None
-    preference_model = None 
+    preference_model = None
     suggestion_optimizer = None
     model_finetuner = None
-    
-    if learning_available:
-        try:
-            logger.info("Initializing learning services...")
-            # Create database and model directories
-            os.makedirs("db", exist_ok=True)
-            os.makedirs("models", exist_ok=True)
-            os.makedirs("samples", exist_ok=True)
-            
-            # Initialize all learning services
-            feedback_tracker, preference_model, suggestion_optimizer, model_finetuner = create_learning_services(
-                db_dir="db",
-                models_dir="models",
-                samples_dir="samples"
-            )
-            
-            logger.info("Learning services initialized successfully")
-            
-            # Pre-load some sample feedback data for the demo
-            _preload_feedback_data(feedback_tracker, users)
-        except Exception as e:
-            logger.error(f"Failed to initialize learning services: {str(e)}")
-            logger.warning("Continuing without adaptive learning capabilities")
-            learning_available = False
-    
-    # Step 5: Initialize Kimi-Audio components if available
+    learning_enabled = False
+    kimi_enabled = False
     audio_processor = None
-    clip_suggester = None
     
-    if kimi_audio_available:
-        try:
-            logger.info("Initializing Kimi-Audio processor...")
-            import torch
-            audio_processor = KimiAudioProcessor(
-                model_name="kimi-audio-7b-instruct",
-                device="cuda" if torch.cuda.is_available() else "cpu"
-            )
-            
-            logger.info("Initializing clip suggester...")
-            clip_suggester = ClipSuggester(
-                audio_processor=audio_processor,
-                min_clip_duration=5.0,
-                max_clip_duration=30.0
-            )
-            logger.info("Kimi-Audio components initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize Kimi-Audio components: {str(e)}")
-            logger.warning("Continuing without Kimi-Audio capabilities")
-            kimi_audio_available = False
-    
-    # Step 6: Set up trigger detectors for each user
-    trigger_detectors = {}
-    
-    for user_id, config in user_configs.items():
-        # Create a trigger detector with config settings and learning capabilities
-        detector = TriggerDetector(
-            keywords=config["keywords"],
-            enable_repeat_check=config["enable_repeat_check"],
-            repeat_window_seconds=config["repeat_window_seconds"],
-            repeat_threshold=config["repeat_threshold"],
-            enable_chat_check=config["enable_chat_check"],
-            chat_activity_threshold=config["chat_activity_threshold"],
-            feedback_tracker=feedback_tracker,
-            user_id=user_id
-        )
+    logging.info("Initializing learning services...")
+    try:
+        feedback_tracker, preference_model, suggestion_optimizer, model_finetuner = create_learning_services()
+        learning_enabled = True
         
-        # Set up the callback for triggers
-        detector.set_callback(lambda event, uid=user_id: on_trigger(event, uid, streamer_id))
-        
-        trigger_detectors[user_id] = detector
-        logger.info(f"Created trigger detector for {user_id}")
+        # Preload some sample feedback data for the demo
+        _preload_feedback_data(feedback_tracker, ["user1", "user2"])
+        logging.info("Learning services initialized successfully")
+    except Exception as e:
+        logging.error(f"Error initializing learning services: {str(e)}")
     
-    # Step 7: Set up the chat service
+    # Initialize Kimi-Audio for audio analysis (if available)
+    logging.info("Initializing Kimi-Audio processor...")
+    try:
+        audio_processor = KimiAudioProcessor(model_name="kimi-audio-7b-instruct")
+        time.sleep(1)  # Allow time for model to load in background
+        kimi_enabled = True
+    except Exception as e:
+        logging.error(f"Failed to initialize Kimi-Audio components: {str(e)}")
+        logging.warning("Continuing without Kimi-Audio capabilities")
+    
+    # Create trigger detectors for users
+    user1_detector = TriggerDetector(
+        user_id="user1",
+        keywords=user1_config["keywords"],
+        enable_repeat_check=user1_config["enable_repeat_check"],
+        repeat_window_seconds=user1_config["repeat_window_seconds"],
+        repeat_threshold=user1_config["repeat_threshold"],
+        enable_chat_check=user1_config["enable_chat_check"],
+        chat_activity_threshold=user1_config["chat_activity_threshold"]
+    )
+    logging.info("Created trigger detector for user1")
+    
+    user2_detector = TriggerDetector(
+        user_id="user2",
+        keywords=user2_config["keywords"],
+        enable_repeat_check=user2_config["enable_repeat_check"],
+        repeat_window_seconds=user2_config["repeat_window_seconds"],
+        repeat_threshold=user2_config["repeat_threshold"],
+        enable_chat_check=user2_config["enable_chat_check"],
+        chat_activity_threshold=user2_config["chat_activity_threshold"]
+    )
+    logging.info("Created trigger detector for user2")
+    
+    # If learning is enabled, attach feedback tracker to trigger detectors
+    if learning_enabled and feedback_tracker:
+        user1_detector.set_learning_module(feedback_tracker)
+        user2_detector.set_learning_module(feedback_tracker)
+    
+    # Initialize chat service
     chat_service = MockChatService(message_interval=1.0)
     
-    # Process chat messages for each user's trigger detector
-    def on_chat_message(timestamp: float, message: str, username: str):
-        logger.info(f"Chat: {username}: {message}")
-        for user_id, detector in trigger_detectors.items():
-            detector.process_chat(timestamp, message, username)
-    
-    chat_service.set_callback(on_chat_message)
-    
-    # Step 8: Set up the STT service for transcription with improved buffering
-    transcript_buffer = []
-    emotion_buffer = []  # New buffer for emotion detection results
-    
-    def on_transcription(text: str, actual_timestamp: Optional[float] = None):
-        if not text:
-            return
-        
-        # Use actual audio timestamp if available, otherwise current time
-        timestamp = actual_timestamp if actual_timestamp is not None else time.time()
-        logger.info(f"Transcript: {text}")
-        
-        # Estimate the duration based on text length (more accurate than fixed multiplier)
-        def estimate_duration(text: str) -> float:
-            """Estimate speech duration based on word count and characters."""
-            words = len(text.split())
-            chars = len(text)
-            # Average English speaker: ~150 words per minute = 0.4s per word
-            # Add character-based component for longer words
-            return max(0.5, (words * 0.4) + (chars * 0.01))
-        
-        duration = estimate_duration(text)
-        
-        # Add to transcript buffer for potential clip subtitles
-        transcript_item = {
-            "start": timestamp,
-            "end": timestamp + duration,
-            "text": text
-        }
-        transcript_buffer.append(transcript_item)
-        
-        # Keep only recent transcripts (last 60 seconds)
-        current_time = time.time()
-        while transcript_buffer and transcript_buffer[0]["start"] < current_time - 60:
-            transcript_buffer.pop(0)
-        
-        # Process the transcription with each user's trigger detector
-        for user_id, detector in trigger_detectors.items():
-            detector.process_transcription(timestamp, text)
-        
-        # Use Kimi-Audio for emotion detection if available
-        if kimi_audio_available and audio_processor:
-            try:
-                emotion_result = audio_processor.detect_emotional_content(text)
-                if emotion_result["has_emotion"] and emotion_result["intensity"] > 0.5:
-                    # Only store significant emotional content
-                    emotion_buffer.append({
-                        "timestamp": timestamp,
-                        "text": text,
-                        "emotion": emotion_result
-                    })
-                    
-                    # If it's a strong positive or surprise emotion, trigger a clip
-                    if (emotion_result["emotion_type"] in ["positive", "positive_surprise"] 
-                            and emotion_result["intensity"] > 0.7):
-                        for user_id in users:
-                            # Create an emotional trigger event
-                            event = TriggerEvent(
-                                timestamp=timestamp,
-                                reason=f"emotion:{emotion_result['emotion_type']}",
-                                metadata={
-                                    "emotion_type": emotion_result["emotion_type"],
-                                    "emotion_words": emotion_result["emotion_words"],
-                                    "intensity": emotion_result["intensity"]
-                                }
-                            )
-                            on_trigger(event, user_id, streamer_id)
-            except Exception as e:
-                logger.error(f"Error in emotion detection: {str(e)}")
+    # Initialize real-time speech-to-text service
+    def on_transcription(text, timestamp):
+        """Handle transcription events."""
+        if text:
+            logging.info(f"Transcription [{timestamp:.2f}s]: {text}")
+            
+            # Pass to user trigger detectors
+            user1_detector.process_transcription(timestamp, text)
+            user2_detector.process_transcription(timestamp, text)
     
     stt_service = RTSTTService(on_transcription)
-    stt_service.start()
     
-    # Step 9: Set up shared stream listener with improved buffering
-    def on_trigger(event: TriggerEvent, user_id: str, streamer_id: str):
-        """Handle trigger events from any source."""
-        logger.info(f"Trigger for {user_id}: {event.reason} at {event.timestamp:.2f}s")
+    # Initialize audio/video stream listener
+    stream = SharedStreamListener(
+        file=video_path,
+        push_audio=lambda audio, timestamp: stt_service.push(audio, timestamp),
+        sample_rate=16000,
+        chunk_sec=0.5
+    )
+    
+    # Set up callbacks for trigger events
+    def on_user1_trigger(trigger_event):
+        """Handle triggers from user1."""
+        _handle_trigger("user1", "demo_streamer", trigger_event, clip_service, clips_organizer, kimi_enabled, audio_processor)
+    
+    def on_user2_trigger(trigger_event):
+        """Handle triggers from user2."""
+        _handle_trigger("user2", "demo_streamer", trigger_event, clip_service, clips_organizer, kimi_enabled, audio_processor)
+    
+    def on_chat_message(timestamp, message, username):
+        """Handle incoming chat messages."""
+        logging.info(f"Chat [{timestamp:.2f}s]: {username}: {message}")
         
-        # Generate clip paths using the clips organizer
-        video_path, metadata_path = clips_organizer.get_clip_path(
-            user_id=user_id,
-            streamer_id=streamer_id,
-            timestamp=event.timestamp
-        )
+        # Pass chat to the trigger detectors
+        user1_detector.process_chat(timestamp, message, username)
+        user2_detector.process_chat(timestamp, message, username)
+    
+    # Register callbacks
+    user1_detector.set_callback(on_user1_trigger)
+    user2_detector.set_callback(on_user2_trigger)
+    chat_service.set_callback(on_chat_message)
+    
+    # Start services
+    try:
+        # Start the chat service
+        chat_service.start()
         
-        # Calculate clip boundaries
-        clip_start = max(0, event.timestamp - 15.0)  # 15 seconds before trigger
-        clip_end = event.timestamp + 15.0  # 15 seconds after trigger
+        # Start the stream listener
+        stream.start()
         
-        # For Kimi-Audio triggered events, use the clip suggester to refine boundaries
-        if (kimi_audio_available and clip_suggester and 
-                event.reason.startswith("emotion:") and os.path.exists(video_file)):
-            try:
-                logger.info("Using Kimi-Audio to suggest optimal clip boundaries")
-                suggestions = clip_suggester.suggest_clips(
-                    media_path=video_file,
-                    center_timestamp=event.timestamp,
-                    keywords=user_configs[user_id]["keywords"],
-                    max_suggestions=1
-                )
-                
-                if suggestions and len(suggestions) > 0:
-                    suggestion = suggestions[0]
-                    # Use suggested boundaries if available
-                    clip_start = suggestion["start"]
-                    clip_end = suggestion["end"]
-                    logger.info(f"Refined clip boundaries: {clip_start:.2f}s - {clip_end:.2f}s")
-            except Exception as e:
-                logger.error(f"Error using clip suggester: {str(e)}")
-                logger.warning("Using default clip boundaries")
+        # Give services time to run
+        logging.info(f"Processing video: {video_path}")
+        logging.info("Press Ctrl+C to stop...")
         
-        # If preference model is available, use it to personalize clip selection
-        if learning_available and preference_model:
-            # Adjust clip boundaries based on user preferences
-            try:
-                if event.reason.startswith("keyword:"):
-                    keyword = event.metadata.get("keyword", "")
-                    if keyword:
-                        # Check keyword preference
-                        kw_pref = preference_model.get_keyword_preference(user_id, keyword)
-                        
-                        # For highly preferred keywords, make slightly longer clips
-                        if kw_pref > 0.7:
-                            post_padding_bonus = 5.0  # Add 5 more seconds for preferred keywords
-                            clip_end += post_padding_bonus
-                            logger.info(f"Extended clip for preferred keyword '{keyword}' (preference: {kw_pref:.2f})")
-                        
-                # For emotional content, check emotion preference
-                elif event.reason.startswith("emotion:"):
-                    emotion_type = event.metadata.get("emotion_type", "")
-                    if emotion_type:
-                        emotion_pref = preference_model.get_emotion_preference(user_id, emotion_type)
-                        
-                        # For highly preferred emotions, make slightly longer clips
-                        if emotion_pref > 0.7:
-                            post_padding_bonus = 5.0
-                            clip_end += post_padding_bonus
-                            logger.info(f"Extended clip for preferred emotion '{emotion_type}' (preference: {emotion_pref:.2f})")
-            except Exception as e:
-                logger.error(f"Error applying preferences: {str(e)}")
+        # Simple animation to show progress
+        chars = "|/-\\"
+        i = 0
+        start_time = time.time()
         
         try:
-            # Extract recent transcript for the clip
-            recent_transcript = [
-                t for t in transcript_buffer
-                if t["start"] >= clip_start and t["end"] <= clip_end
-            ]
-            
-            # Create clip metadata
-            clip_metadata = {
-                "user_id": user_id, 
-                "trigger_reason": event.reason,
-                **event.metadata
-            }
-            
-            if event.reason.startswith("keyword:"):
-                clip_metadata["keywords"] = [event.metadata.get("keyword", "")]
-            
-            # Create the clip using ClipService
-            clip_service.create_clip(
-                video_path=video_file,
-                center_ts=event.timestamp,
-                reason=event.reason,
-                subtitles=[(t["start"], t["end"], t["text"]) for t in recent_transcript],
-                metadata=clip_metadata,
-                output_path=video_path,
-                metadata_path=metadata_path
-            )
-            
-            # Generate additional metadata using Kimi-Audio if available
-            additional_metadata = {}
-            if kimi_audio_available and audio_processor:
-                try:
-                    # Generate a concise caption for the clip
-                    temp_clip_file = clip_service.get_last_clip_path()
-                    if os.path.exists(temp_clip_file):
-                        caption = audio_processor.generate_audio_caption(temp_clip_file)
-                        additional_metadata["audio_caption"] = caption
-                        logger.info(f"Generated audio caption: {caption}")
-                        
-                        # Collect audio sample for model fine-tuning if enabled
-                        if learning_available and model_finetuner:
-                            # This would capture audio for future fine-tuning
-                            # In a real implementation, we would extract actual audio features
-                            # Here we just log that it would happen
-                            logger.info(f"Would collect audio sample for user {user_id} (fine-tuning)")
-                except Exception as e:
-                    logger.error(f"Error generating audio caption: {str(e)}")
-            
-            # Generate and save metadata using ClipsOrganizer
-            metadata = clips_organizer.generate_metadata(
-                user_id=user_id,
-                streamer_id=streamer_id,
-                trigger_time=event.timestamp,
-                clip_start=clip_start,
-                clip_end=clip_end,
-                trigger_reason=event.reason,
-                transcript=recent_transcript,
-                **additional_metadata
-            )
-            
-            clips_organizer.save_clip_metadata(metadata_path, metadata)
-            
-            logger.info(f"Created clip for {user_id} at {video_path}")
-            
-            # Simulate user feedback for demo purposes
-            # In a real application, this would come from UI interactions
-            if learning_available:
-                # Choose a random feedback option
-                feedback_options = ["keep", "favorite", "share", "discard", "skip"]
-                # Bias toward positive feedback for demo purposes
-                weights = [0.4, 0.2, 0.1, 0.2, 0.1]
+            while time.time() - start_time < 30:  # Run for 30 seconds or until video ends
+                status = stream.get_status()
+                position = status["current_position"]
+                duration = status["duration"]
+                progress = (position / duration * 100) if duration > 0 else 0
                 
-                import random
-                feedback = random.choices(feedback_options, weights=weights)[0]
+                # Print progress
+                print(f"\r{chars[i]} Processing: {position:.1f}s / {duration:.1f}s [{progress:.1f}%]", end="")
+                i = (i + 1) % len(chars)
                 
-                # Process the feedback
-                clip_id = os.path.basename(video_path)
-                process_clip_feedback(
-                    clip_id=clip_id,
-                    user_id=user_id,
-                    feedback=feedback,
-                    trigger_reason=event.reason,
-                    metadata=metadata
-                )
+                # Check if video processing is complete
+                if position >= duration and duration > 0:
+                    print("\nVideo processing complete!")
+                    break
                 
-                logger.info(f"Simulated user feedback for clip: {feedback}")
-        except Exception as e:
-            logger.error(f"Error creating clip: {str(e)}")
-    
-    # Start the chat service
-    chat_service.start()
-    
-    try:
-        # Start processing the video
-        logger.info(f"Processing video: {video_file}")
-        logger.info("Press Ctrl+C to stop")
-        
-        # Create and start the shared stream listener
-        listener = SharedStreamListener(video_file, push_audio=stt_service.push)
-        listener.start()
-        
-        # Let it run for a while to generate clips
-        total_runtime = 30  # Run for 30 seconds
-        logger.info(f"Running for {total_runtime} seconds...")
-        
-        # Sleep in small increments to allow keyboard interrupts
-        for _ in range(total_runtime):
-            time.sleep(1)
+                time.sleep(0.5)
             
-    except KeyboardInterrupt:
-        logger.info("Stopping processing")
+            print("\nExecution complete")
+            
+        except KeyboardInterrupt:
+            print("\nStopped by user")
+        
     finally:
-        # Clean up
-        logger.info("Shutting down services...")
+        # Stop all services
+        stream.stop()
         chat_service.stop()
-        if hasattr(stt_service, 'shutdown'):
-            stt_service.shutdown()
+        stt_service.shutdown()
         
-        # Give some time for everything to finish
-        time.sleep(1)
-        
-        # Print summary of clips generated
-        clip_counts = clips_organizer.get_clip_count()
-        logger.info("Clip generation summary:")
-        for user_id, count in clip_counts.items():
-            logger.info(f"  {user_id}: {count} clips")
-        
-        # List any database files created by learning module
-        logger.info("Learning database files:")
-        if os.path.exists("db"):
-            for file in os.listdir("db"):
-                logger.info(f"  db/{file}")
+        if learning_enabled and feedback_tracker is not None:
+            # Print learning module stats
+            logging.info("Learning module statistics:")
+            logging.info(f"Feedback database initialized")
+            if hasattr(preference_model, "get_update_count"):
+                logging.info(f"User preferences updated: {preference_model.get_update_count()} times")
+            if hasattr(suggestion_optimizer, "get_optimization_count"):
+                logging.info(f"Suggestion optimizations: {suggestion_optimizer.get_optimization_count()}")
 
 def _preload_feedback_data(feedback_tracker, users):
     """Preload some sample feedback data for the demo."""
@@ -576,6 +352,66 @@ def process_clip_feedback(clip_id: str, user_id: str, feedback: str,
         trigger_detectors[user_id].update_from_feedback()
         
     logger.info(f"Learning updated for user {user_id}")
+
+def _handle_trigger(user_id, streamer_id, trigger_event, clip_service, clips_organizer, kimi_enabled, audio_processor):
+    """
+    Handle a trigger event by creating a clip.
+    
+    Args:
+        user_id: User ID
+        streamer_id: Streamer ID
+        trigger_event: The trigger event
+        clip_service: ClipService instance
+        clips_organizer: ClipsOrganizer instance
+        kimi_enabled: Whether Kimi-Audio is enabled
+        audio_processor: KimiAudioProcessor instance if enabled
+    """
+    logging.info(f"Trigger for {user_id}: {trigger_event.reason} at {trigger_event.timestamp:.2f}s")
+    
+    # Generate clip paths
+    video_path, metadata_path = clips_organizer.get_clip_path(
+        user_id=user_id,
+        streamer_id=streamer_id,
+        timestamp=trigger_event.timestamp
+    )
+    
+    # Calculate clip boundaries (15 seconds before and after the trigger)
+    clip_start = max(0, trigger_event.timestamp - 15.0)
+    clip_end = trigger_event.timestamp + 15.0
+    
+    # Create transcript placeholder
+    transcript = []
+    
+    try:
+        # Create the clip
+        clip_service.create_clip(
+            video_path="test_data/test_video_with_audio.mp4",  # Use the same path for demo
+            center_ts=trigger_event.timestamp,
+            reason=trigger_event.reason,
+            subtitles=None,
+            metadata=trigger_event.metadata,
+            output_path=video_path,
+            metadata_path=metadata_path
+        )
+        
+        # Generate metadata
+        metadata = clips_organizer.generate_metadata(
+            user_id=user_id,
+            streamer_id=streamer_id,
+            trigger_time=trigger_event.timestamp,
+            clip_start=clip_start,
+            clip_end=clip_end,
+            trigger_reason=trigger_event.reason,
+            transcript=transcript
+        )
+        
+        # Save metadata
+        clips_organizer.save_clip_metadata(metadata_path, metadata)
+        
+        logging.info(f"Created clip for {user_id} at {video_path}")
+        
+    except Exception as e:
+        logging.error(f"Error creating clip: {str(e)}")
 
 if __name__ == "__main__":
     import sys

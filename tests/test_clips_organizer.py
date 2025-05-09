@@ -255,24 +255,30 @@ class TestClipsOrganizer:
             # Small delay to ensure file operations complete
             time.sleep(0.1)
         
-        # Manual verification of files
+        # Manual verification of files by walking the directories
         user1_dir = os.path.join(temp_clips_dir, user1)
         user2_dir = os.path.join(temp_clips_dir, user2)
         
-        # Debug: List all files in user directories
-        user1_dir_files = os.listdir(user1_dir) if os.path.exists(user1_dir) else []
-        user2_dir_files = os.listdir(user2_dir) if os.path.exists(user2_dir) else []
+        # Count MP4 files manually by walking through all subdirectories
+        user1_mp4_count = 0
+        user2_mp4_count = 0
         
-        # Count MP4 files manually
-        user1_mp4_count = sum(1 for f in user1_dir_files if f.endswith(".mp4"))
-        user2_mp4_count = sum(1 for f in user2_dir_files if f.endswith(".mp4"))
+        for root, _, files in os.walk(user1_dir):
+            for f in files:
+                if f.endswith(".mp4"):
+                    user1_mp4_count += 1
+        
+        for root, _, files in os.walk(user2_dir):
+            for f in files:
+                if f.endswith(".mp4"):
+                    user2_mp4_count += 1
         
         # Get counts from the method
         counts = organizer.get_clip_count()
         
         # Assert using manually verified counts
-        assert user1_mp4_count == 3, f"Expected 3 MP4 files for user1, found {user1_mp4_count}: {user1_dir_files}"
-        assert user2_mp4_count == 2, f"Expected 2 MP4 files for user2, found {user2_mp4_count}: {user2_dir_files}"
+        assert user1_mp4_count == 3, f"Expected 3 MP4 files for user1, found {user1_mp4_count}"
+        assert user2_mp4_count == 2, f"Expected 2 MP4 files for user2, found {user2_mp4_count}"
         
         # Now check with the method's output
         assert counts[user1] == user1_mp4_count

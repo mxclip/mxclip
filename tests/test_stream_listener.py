@@ -163,6 +163,10 @@ def test_shared_stream_reader_process(mock_ffmpeg, sample_wav_file):
     ]
     mock_ffmpeg.input.return_value.output.return_value.run_async.return_value = mock_process
     
+    # Directly put an audio chunk in the buffer instead of relying on thread
+    audio_chunk = np.zeros(int(sample_rate * chunk_sec), dtype=np.int16)
+    listener.audio_buffer.put(audio_chunk)
+    
     # Start a real thread to run the reader process
     reader_thread = threading.Thread(target=listener._read_stream)
     

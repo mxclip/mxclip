@@ -6,6 +6,8 @@ import threading
 import time
 import logging
 import random
+import numpy as np
+from collections import deque
 from typing import Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,21 @@ class MockChatService:
     """
     Mock implementation of a chat service for testing.
     """
+    
+    # Class attributes for sample data
+    SAMPLE_USERNAMES = ["user1", "user2", "streamer", "fan123", "viewer456"]
+    SAMPLE_MESSAGES = [
+        "Hello everyone!",
+        "This stream is awesome",
+        "Wow that was amazing",
+        "Cool feature",
+        "Nice work on this",
+        "Interesting demo",
+        "Let's go!",
+        "How does this work?",
+        "I like this",
+        "Can you do that again?"
+    ]
     
     def __init__(self, message_interval: float = 1.0):
         """
@@ -26,21 +43,6 @@ class MockChatService:
         self.running = False
         self.thread = None
         self.callback = None
-        
-        # Sample chat data for testing
-        self.sample_usernames = ["user1", "user2", "streamer", "fan123", "viewer456"]
-        self.sample_messages = [
-            "Hello everyone!",
-            "This stream is awesome",
-            "Wow that was amazing",
-            "Cool feature",
-            "Nice work on this",
-            "Interesting demo",
-            "Let's go!",
-            "How does this work?",
-            "I like this",
-            "Can you do that again?"
-        ]
         
         logger.info("Initialized MockChatService")
     
@@ -82,8 +84,8 @@ class MockChatService:
             
         while self.running:
             # Generate a random chat message
-            username = random.choice(self.sample_usernames)
-            message = random.choice(self.sample_messages)
+            username = random.choice(self.SAMPLE_USERNAMES)
+            message = random.choice(self.SAMPLE_MESSAGES)
             timestamp = time.time()
             
             # Call the callback
@@ -94,6 +96,15 @@ class MockChatService:
             
             # Wait for the next message
             time.sleep(self.message_interval)
+    
+    def __enter__(self):
+        """Context manager entry point."""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit point."""
+        self.stop()
 
 
 class ChatTrigger:

@@ -1,0 +1,22 @@
+{
+  "user_id": "user2",
+  "streamer_id": "demo_streamer",
+  "trigger_time": 1746763769.640878,
+  "clip_start": 1746763754.640878,
+  "clip_end": 1746763784.640878,
+  "duration": 30.0,
+  "trigger_reason": "chat_activity",
+  "created_at": 1746763769.641475,
+  "transcript": [
+    {
+      "start": 1746763767.6210718,
+      "end": 1746763769.9010718,
+      "text": "This is a test transcription"
+    },
+    {
+      "start": 1746763769.624929,
+      "end": 1746763771.894929,
+      "text": "Wow this is amazing content"
+    }
+  ]
+}

@@ -1,5 +1,4 @@
 {
-  "user_id": "user2",
   "keywords": [
     "interesting",
     "cool",
@@ -9,5 +8,6 @@
   "repeat_window_seconds": 10,
   "repeat_threshold": 2,
   "enable_chat_check": true,
-  "chat_activity_threshold": 3
+  "chat_activity_threshold": 3,
+  "user_id": "user2"
 }

@@ -139,6 +139,16 @@ class TriggerDetector:
         self.user_id = user_id
         self._apply_learning_adjustments()
     
+    def set_learning_module(self, feedback_tracker: Any) -> None:
+        """
+        Set the learning module (feedback tracker) for adaptive learning.
+        
+        Args:
+            feedback_tracker: ClipFeedbackTracker instance
+        """
+        self.feedback_tracker = feedback_tracker
+        self._apply_learning_adjustments()
+    
     def _apply_learning_adjustments(self) -> None:
         """Apply adjustments based on learning from clip feedback."""
         if not self.feedback_tracker or not self.user_id:
