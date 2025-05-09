@@ -1,0 +1,52 @@
+{
+  "user_id": "user2",
+  "streamer_id": "demo_streamer",
+  "trigger_time": 1746763189.2326028,
+  "clip_start": 1746763174.2326028,
+  "clip_end": 1746763204.2326028,
+  "duration": 30.0,
+  "trigger_reason": "chat_activity",
+  "created_at": 1746763189.238501,
+  "transcript": [
+    {
+      "start": 1746763175.059963,
+      "end": 1746763177.339963,
+      "text": "This is a test transcription"
+    },
+    {
+      "start": 1746763177.065102,
+      "end": 1746763179.335102,
+      "text": "Wow this is amazing content"
+    },
+    {
+      "start": 1746763179.089464,
+      "end": 1746763181.839464,
+      "text": "Cool feature that works really well"
+    },
+    {
+      "start": 1746763181.099183,
+      "end": 1746763183.469183,
+      "text": "Let's try something interesting today"
+    },
+    {
+      "start": 1746763183.11358,
+      "end": 1746763185.00358,
+      "text": "This is awesome functionality"
+    },
+    {
+      "start": 1746763185.1210382,
+      "end": 1746763186.981038,
+      "text": "Nice job implementing this"
+    },
+    {
+      "start": 1746763187.140887,
+      "end": 1746763189.390887,
+      "text": "Let's go, this is amazing"
+    },
+    {
+      "start": 1746763189.1481988,
+      "end": 1746763192.7381988,
+      "text": "Wow I can't believe how awesome this is"
+    }
+  ]
+}

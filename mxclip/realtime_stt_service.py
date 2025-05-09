@@ -1,42 +1,84 @@
-from RealtimeSTT import AudioToTextRecorder
-from typing import Callable, Optional, Any, List
+"""
+Simplified Speech-to-Text service for testing.
+"""
+
+import logging
+import time
+import threading
+from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 class RTSTTService:
     """
-    Asynchronous real-time speech-to-text service:
-      push(samples, timestamp) → internal thread calls RealtimeSTT
-      samples should be 16kHz mono PCM int16 numpy array
-      
-    Preserves audio timestamps for accurate transcription timing.
+    Simplified Speech-to-Text Service for testing.
     """
-    def __init__(self, text_callback, model_size="base.en"):
-        self.text_cb = text_callback
-        self.current_timestamp = None
-        
-        # Wrap the callback to include timestamp
-        def callback_with_timestamp(text):
-            self.text_cb(text, self.current_timestamp)
-            
-        self.recorder = AudioToTextRecorder(
-            model=model_size,
-            language="en",
-            use_microphone=False,
-            spinner=False,
-            enable_realtime_transcription=True,
-            on_realtime_transcription_update=callback_with_timestamp
-        )
-
-    def push(self, samples, timestamp: Optional[float] = None):
+    
+    def __init__(self, callback: Callable[[str, Optional[float]], None]):
         """
-        Push audio samples with optional timestamp to the STT service.
+        Initialize the service.
         
         Args:
-            samples: Audio samples (16kHz mono PCM int16 numpy array)
-            timestamp: Timestamp of the audio in seconds from start of stream
+            callback: Function to call with transcription results
         """
-        # Store timestamp for use in callback
-        self.current_timestamp = timestamp
-        self.recorder.feed_audio(samples)
-
+        self.callback = callback
+        self.running = False
+        self.thread = None
+        
+        # Sample transcriptions for testing with trigger words
+        self.test_transcriptions = [
+            "This is a test transcription",
+            "Wow this is amazing content",
+            "Cool feature that works really well",
+            "Let's try something interesting today",
+            "This is awesome functionality",
+            "Nice job implementing this",
+            "Let's go, this is amazing",
+            "Wow I can't believe how awesome this is",
+            "That's really cool how it works",
+            "Interesting results from the test"
+        ]
+        
+        logger.info("Initialized RTSTTService with sample transcriptions")
+        
+    def start(self):
+        """Start the service."""
+        self.running = True
+        self.thread = threading.Thread(target=self._send_sample_transcriptions)
+        self.thread.daemon = True
+        self.thread.start()
+        logger.info("Started RTSTTService")
+    
     def shutdown(self):
-        self.recorder.shutdown()
+        """Shut down the service."""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=1.0)
+        logger.info("Stopped RTSTTService")
+    
+    def push(self, audio_data, **kwargs):
+        """
+        Process audio data (mock implementation).
+        
+        Args:
+            audio_data: Audio data to process
+            **kwargs: Additional arguments
+        """
+        # We don't actually process the audio in this mock version
+        pass
+    
+    def _send_sample_transcriptions(self):
+        """Send sample transcriptions at intervals."""
+        idx = 0
+        while self.running:
+            if idx < len(self.test_transcriptions):
+                text = self.test_transcriptions[idx]
+                timestamp = time.time()
+                self.callback(text, timestamp)
+                idx += 1
+            else:
+                # Loop back to beginning
+                idx = 0
+            
+            # Sleep between transcriptions
+            time.sleep(2.0)

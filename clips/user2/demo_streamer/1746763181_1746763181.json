@@ -1,0 +1,32 @@
+{
+  "user_id": "user2",
+  "streamer_id": "demo_streamer",
+  "trigger_time": 1746763181.126857,
+  "clip_start": 1746763166.126857,
+  "clip_end": 1746763196.126857,
+  "duration": 30.0,
+  "trigger_reason": "chat_activity",
+  "created_at": 1746763181.1317482,
+  "transcript": [
+    {
+      "start": 1746763175.059963,
+      "end": 1746763177.339963,
+      "text": "This is a test transcription"
+    },
+    {
+      "start": 1746763177.065102,
+      "end": 1746763179.335102,
+      "text": "Wow this is amazing content"
+    },
+    {
+      "start": 1746763179.089464,
+      "end": 1746763181.839464,
+      "text": "Cool feature that works really well"
+    },
+    {
+      "start": 1746763181.099183,
+      "end": 1746763183.469183,
+      "text": "Let's try something interesting today"
+    }
+  ]
+}

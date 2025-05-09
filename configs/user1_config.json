@@ -1,0 +1,13 @@
+{
+  "user_id": "user1",
+  "keywords": [
+    "awesome",
+    "amazing",
+    "wow"
+  ],
+  "enable_repeat_check": true,
+  "repeat_window_seconds": 10,
+  "repeat_threshold": 2,
+  "enable_chat_check": true,
+  "chat_activity_threshold": 15
+}

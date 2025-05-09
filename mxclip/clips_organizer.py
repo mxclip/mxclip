@@ -1,5 +1,5 @@
 """
-Clips organizer for MX Clipping.
+Clips Organizer for MX Clipping.
 
 This module handles the organization of generated clips,
 including folder structure, naming conventions, and metadata management.
@@ -8,20 +8,14 @@ including folder structure, naming conventions, and metadata management.
 import os
 import json
 import time
-import uuid
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 class ClipsOrganizer:
     """
-    Organizes generated clips according to a consistent folder structure and naming convention.
-    
-    Format:
-    clips/user1@streamer_20240502_231502_uniqueid.mp4
-    clips/user1@streamer_20240502_231502_uniqueid.json
+    Organizes clips based on users and streamers.
     """
     
     def __init__(self, base_dir: str = "clips"):
@@ -29,162 +23,154 @@ class ClipsOrganizer:
         Initialize the clips organizer.
         
         Args:
-            base_dir: Base directory for storing clips
+            base_dir: Base directory for clips
         """
         self.base_dir = base_dir
-        
-        # Ensure the base directory exists
         os.makedirs(base_dir, exist_ok=True)
         
-        # Create subdirectories for organization
-        self.user_dirs = {}
+        # Track clip counts by user
+        self.clip_counts = {}
+        
+        logger.info(f"Initialized ClipsOrganizer with base directory: {base_dir}")
     
-    def get_clip_path(self, user_id: str, streamer_id: str, timestamp: Optional[float] = None) -> Tuple[str, str]:
+    def get_clip_path(self, user_id: str, streamer_id: str, timestamp: float) -> Tuple[str, str]:
         """
         Generate paths for a new clip and its metadata.
         
         Args:
-            user_id: ID of the user who triggered the clip
-            streamer_id: ID of the streamer being clipped
-            timestamp: Optional timestamp for the clip (defaults to current time)
-        
+            user_id: User ID
+            streamer_id: Streamer ID
+            timestamp: Timestamp of the clip
+            
         Returns:
-            Tuple of (video_path, metadata_path)
+            Tuple of (clip_path, metadata_path)
         """
-        # Use current time if timestamp is not provided
-        if timestamp is None:
-            timestamp = time.time()
-        
-        # Format timestamp as YYYYMMDD_HHMMSS
-        dt = datetime.fromtimestamp(timestamp)
-        timestamp_str = dt.strftime("%Y%m%d_%H%M%S")
-        
-        # Generate a unique identifier to prevent collisions
-        unique_id = str(uuid.uuid4())[:8]
-        
-        # Create filename: user@streamer_timestamp_uniqueid
-        filename_base = f"{user_id}@{streamer_id}_{timestamp_str}_{unique_id}"
-        
-        # Create user directory if it doesn't exist
+        # Create directory structure
         user_dir = os.path.join(self.base_dir, user_id)
-        if user_dir not in self.user_dirs:
-            os.makedirs(user_dir, exist_ok=True)
-            self.user_dirs[user_dir] = True
+        streamer_dir = os.path.join(user_dir, streamer_id)
+        os.makedirs(streamer_dir, exist_ok=True)
         
-        # Create file paths
-        video_path = os.path.join(user_dir, f"{filename_base}.mp4")
-        metadata_path = os.path.join(user_dir, f"{filename_base}.json")
+        # Generate filename
+        timestamp_str = str(int(timestamp))
+        clip_id = f"{timestamp_str}_{int(time.time())}"
         
-        return video_path, metadata_path
+        # Create paths
+        clip_path = os.path.join(streamer_dir, f"{clip_id}.mp4")
+        metadata_path = os.path.join(streamer_dir, f"{clip_id}.json")
+        
+        # Update clip count
+        if user_id not in self.clip_counts:
+            self.clip_counts[user_id] = 1
+        else:
+            self.clip_counts[user_id] += 1
+        
+        return clip_path, metadata_path
     
-    def save_clip_metadata(self, metadata_path: str, metadata: Dict[str, Any]) -> None:
+    def generate_metadata(self, user_id: str, streamer_id: str, trigger_time: float,
+                        clip_start: float, clip_end: float, trigger_reason: str,
+                        transcript: Optional[List[Dict[str, Any]]] = None,
+                        **extra_metadata) -> Dict[str, Any]:
         """
-        Save clip metadata to a JSON file.
+        Generate metadata for a clip.
         
         Args:
-            metadata_path: Path to save the metadata file
-            metadata: Metadata to save
+            user_id: User ID
+            streamer_id: Streamer ID
+            trigger_time: Time when the trigger occurred
+            clip_start: Start time of the clip
+            clip_end: End time of the clip
+            trigger_reason: Reason for the clip trigger
+            transcript: List of transcript items
+            **extra_metadata: Additional metadata
+            
+        Returns:
+            Dictionary of metadata
+        """
+        metadata = {
+            "user_id": user_id,
+            "streamer_id": streamer_id,
+            "trigger_time": trigger_time,
+            "clip_start": clip_start,
+            "clip_end": clip_end,
+            "duration": clip_end - clip_start,
+            "trigger_reason": trigger_reason,
+            "created_at": time.time(),
+            "transcript": transcript or []
+        }
+        
+        # Add extra metadata
+        metadata.update(extra_metadata)
+        
+        return metadata
+    
+    def save_clip_metadata(self, metadata_path: str, metadata: Dict[str, Any]) -> bool:
+        """
+        Save clip metadata to a file.
+        
+        Args:
+            metadata_path: Path to save the metadata
+            metadata: Metadata dictionary
+            
+        Returns:
+            True if saved successfully, False otherwise
         """
         try:
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
             logger.info(f"Saved clip metadata to {metadata_path}")
+            return True
         except Exception as e:
             logger.error(f"Error saving clip metadata: {str(e)}")
+            return False
     
-    def generate_metadata(
-        self,
-        user_id: str,
-        streamer_id: str,
-        trigger_time: float,
-        clip_start: float,
-        clip_end: float,
-        trigger_reason: str,
-        transcript: Optional[List[Dict[str, Any]]] = None
-    ) -> Dict[str, Any]:
+    def get_user_clips(self, user_id: str) -> List[Dict[str, Any]]:
         """
-        Generate metadata for a clip.
+        Get all clips for a user.
         
         Args:
-            user_id: ID of the user who triggered the clip
-            streamer_id: ID of the streamer being clipped
-            trigger_time: Timestamp when the trigger occurred
-            clip_start: Start timestamp of the clip
-            clip_end: End timestamp of the clip
-            trigger_reason: Reason for the trigger
-            transcript: Optional list of transcript segments
-        
+            user_id: User ID
+            
         Returns:
-            Metadata dictionary
+            List of clip metadata
         """
-        metadata = {
-            "user": user_id,
-            "streamer": streamer_id,
-            "trigger_time": trigger_time,
-            "clip_start": clip_start,
-            "clip_end": clip_end,
-            "trigger_reason": trigger_reason,
-            "created_at": datetime.now().isoformat(),
-        }
-        
-        if transcript:
-            metadata["transcript"] = transcript
-        
-        return metadata
-    
-    def list_user_clips(self, user_id: str) -> List[Dict[str, Any]]:
-        """
-        List all clips for a specific user.
-        
-        Args:
-            user_id: User ID to list clips for
-        
-        Returns:
-            List of metadata dictionaries for the user's clips
-        """
-        clips = []
         user_dir = os.path.join(self.base_dir, user_id)
-        
         if not os.path.exists(user_dir):
-            return clips
+            return []
         
-        # Find all JSON metadata files in the user's directory
-        for filename in os.listdir(user_dir):
-            if filename.endswith(".json"):
-                metadata_path = os.path.join(user_dir, filename)
-                try:
-                    with open(metadata_path, 'r') as f:
-                        metadata = json.load(f)
-                    
-                    # Add the filename to the metadata
-                    metadata["filename"] = filename
-                    metadata["video_path"] = os.path.join(user_dir, filename.replace(".json", ".mp4"))
-                    metadata["metadata_path"] = metadata_path
-                    
-                    clips.append(metadata)
-                except Exception as e:
-                    logger.error(f"Error loading clip metadata from {metadata_path}: {str(e)}")
+        clips = []
         
-        # Sort clips by creation time (newest first)
-        clips.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        # Walk through user directory
+        for root, _, files in os.walk(user_dir):
+            for file in files:
+                if file.endswith('.json'):
+                    try:
+                        with open(os.path.join(root, file), 'r') as f:
+                            metadata = json.load(f)
+                        clips.append(metadata)
+                    except Exception as e:
+                        logger.error(f"Error loading clip metadata: {str(e)}")
+        
+        # Sort by creation time (newest first)
+        clips.sort(key=lambda x: x.get('created_at', 0), reverse=True)
         
         return clips
     
     def get_clip_count(self) -> Dict[str, int]:
         """
-        Get the count of clips for each user.
+        Get the number of clips for each user.
         
         Returns:
             Dictionary mapping user IDs to clip counts
         """
-        counts = {}
-        
-        for item in os.listdir(self.base_dir):
-            user_dir = os.path.join(self.base_dir, item)
+        # Update counts by scanning directories
+        for user_id in os.listdir(self.base_dir):
+            user_dir = os.path.join(self.base_dir, user_id)
             if os.path.isdir(user_dir):
-                # Count MP4 files in the user's directory
-                user_id = item
-                mp4_count = sum(1 for f in os.listdir(user_dir) if f.endswith(".mp4"))
-                counts[user_id] = mp4_count
+                count = 0
+                for root, _, files in os.walk(user_dir):
+                    for file in files:
+                        if file.endswith('.mp4'):
+                            count += 1
+                self.clip_counts[user_id] = count
         
-        return counts 
+        return self.clip_counts 

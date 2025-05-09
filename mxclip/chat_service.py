@@ -1,97 +1,99 @@
-import time
-import random
+"""
+Mock Chat Service for testing.
+"""
+
 import threading
-import numpy as np
-from collections import deque
-from datetime import datetime, timedelta
-from typing import Iterator, Tuple, Optional, List, Callable
+import time
+import logging
+import random
+from typing import Callable, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 class MockChatService:
     """
-    A mock chat service that generates random messages for demo purposes.
-    
-    Yields:
-        Tuple[float, str, str]: A tuple containing (timestamp, message, username)
+    Mock implementation of a chat service for testing.
     """
-    SAMPLE_MESSAGES = [
-        "Hello everyone!",
-        "This gameplay is amazing!",
-        "What a great play!",
-        "OMG did you see that?",
-        "LOL that was unexpected",
-        "Wow, nice move!",
-        "That's insane!",
-        "Let's go!",
-        "GG everyone",
-        "That was close!"
-    ]
     
-    SAMPLE_USERNAMES = [
-        "gamer123",
-        "proStreamer",
-        "coolPlayer42",
-        "epicGamer",
-        "gameEnthusiast",
-        "playerOne",
-        "streamViewer",
-        "chatLover",
-        "fanBoy123",
-        "gamingFan"
-    ]
-    
-    def __init__(self, message_interval: float = 0.2):
+    def __init__(self, message_interval: float = 1.0):
         """
         Initialize the mock chat service.
         
         Args:
-            message_interval: The average time between messages in seconds
+            message_interval: Time between messages in seconds
         """
         self.message_interval = message_interval
         self.running = False
         self.thread = None
+        self.callback = None
+        
+        # Sample chat data for testing
+        self.sample_usernames = ["user1", "user2", "streamer", "fan123", "viewer456"]
+        self.sample_messages = [
+            "Hello everyone!",
+            "This stream is awesome",
+            "Wow that was amazing",
+            "Cool feature",
+            "Nice work on this",
+            "Interesting demo",
+            "Let's go!",
+            "How does this work?",
+            "I like this",
+            "Can you do that again?"
+        ]
+        
+        logger.info("Initialized MockChatService")
     
-    def start(self):
-        """Start the mock chat service."""
-        self.running = True
-        self.thread = threading.Thread(target=self._generate_messages, daemon=True)
-        self.thread.start()
-    
-    def stop(self):
-        """Stop the mock chat service."""
-        self.running = False
-        if self.thread:
-            self.thread.join(timeout=1.0)
-    
-    def _generate_messages(self):
-        """Generate random messages at random intervals."""
-        while self.running:
-            # Sleep for a random time around the message interval
-            time.sleep(max(0.05, random.gauss(self.message_interval, self.message_interval / 4)))
-            
-            # Generate a random message
-            message = random.choice(self.SAMPLE_MESSAGES)
-            username = random.choice(self.SAMPLE_USERNAMES)
-            timestamp = time.time()
-            
-            # Call the callback with the message
-            if hasattr(self, 'callback') and callable(self.callback):
-                self.callback(timestamp, message, username)
-    
-    def set_callback(self, callback: Callable[[float, str, str], None]):
+    def set_callback(self, callback: Callable[[float, str, str], None]) -> None:
         """
-        Set a callback function to receive messages.
+        Set the callback function for new chat messages.
         
         Args:
-            callback: A function that takes (timestamp, message, username) as arguments
+            callback: Function to call with (timestamp, message, username)
         """
         self.callback = callback
     
-    def __enter__(self):
-        self.start()
-        return self
+    def start(self) -> None:
+        """Start generating mock chat messages."""
+        if self.thread and self.running:
+            logger.warning("Chat service already running")
+            return
+            
+        self.running = True
+        self.thread = threading.Thread(target=self._generate_messages)
+        self.thread.daemon = True
+        self.thread.start()
+        
+        logger.info("Started mock chat service")
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
+    def stop(self) -> None:
+        """Stop generating mock chat messages."""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=1.0)
+        
+        logger.info("Stopped mock chat service")
+    
+    def _generate_messages(self) -> None:
+        """Generate random chat messages at regular intervals."""
+        if not self.callback:
+            logger.warning("No callback set for chat messages")
+            return
+            
+        while self.running:
+            # Generate a random chat message
+            username = random.choice(self.sample_usernames)
+            message = random.choice(self.sample_messages)
+            timestamp = time.time()
+            
+            # Call the callback
+            try:
+                self.callback(timestamp, message, username)
+            except Exception as e:
+                logger.error(f"Error in chat callback: {str(e)}")
+            
+            # Wait for the next message
+            time.sleep(self.message_interval)
 
 
 class ChatTrigger:

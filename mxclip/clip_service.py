@@ -1,256 +1,113 @@
+"""
+Mock Clip Service for testing.
+"""
+
 import os
+import logging
 import json
 import time
-import subprocess
-import tempfile
-import logging
-from datetime import datetime
-from typing import Optional, Dict, Any, List, Tuple
-import ffmpeg
+from typing import Dict, Any, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 class ClipService:
     """
-    Service for creating video clips with subtitles and watermarks.
-    
-    This service takes a timestamp and creates a video clip centered around that
-    timestamp. It applies subtitles and watermarks to the clip and ensures that
-    the output is no longer than a specified maximum duration.
+    Mock service for creating clips from video files.
     """
     
-    def __init__(
-        self, 
-        output_dir: str = "clips",
-        clip_length: float = 30.0,
-        pre_padding: float = 15.0,
-        post_padding: float = 15.0,
-        watermark_path: Optional[str] = None,
-        watermark_position: str = "bottomright",
-        watermark_size: float = 0.2,
-        max_duration: float = 30.0
-    ):
+    def __init__(self, output_dir: str = "clips"):
         """
         Initialize the clip service.
         
         Args:
-            output_dir: Directory to store the generated clips
-            clip_length: Total desired clip length in seconds
-            pre_padding: Amount of time to include before the center timestamp
-            post_padding: Amount of time to include after the center timestamp
-            watermark_path: Path to the watermark image
-            watermark_position: Position of the watermark (topleft, topright, bottomleft, bottomright)
-            watermark_size: Size of the watermark as a fraction of the video width
-            max_duration: Maximum duration of the generated clip in seconds
+            output_dir: Directory to store clips
         """
         self.output_dir = output_dir
-        self.clip_length = clip_length
-        self.pre_padding = pre_padding
-        self.post_padding = post_padding
-        self.watermark_path = watermark_path
-        self.watermark_position = watermark_position
-        self.watermark_size = watermark_size
-        self.max_duration = max_duration
+        os.makedirs(output_dir, exist_ok=True)
         self.last_clip_path = None
         
-        # Create output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Initialized ClipService with output directory: {output_dir}")
     
     def create_clip(
-        self, 
+        self,
         video_path: str,
         center_ts: float,
         reason: str,
+        output_path: Optional[str] = None,
+        metadata_path: Optional[str] = None,
         subtitles: Optional[List[Tuple[float, float, str]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        output_path: Optional[str] = None,
-        metadata_path: Optional[str] = None
-    ) -> Optional[str]:
+        clip_duration: float = 30.0,
+    ) -> Dict[str, Any]:
         """
-        Create a video clip centered around the specified timestamp.
+        Create a video clip (mock implementation).
         
         Args:
-            video_path: Path to the source video file
-            center_ts: Timestamp to center the clip around (in seconds)
+            video_path: Path to the source video
+            center_ts: Timestamp to center the clip on (seconds from start)
             reason: Reason for creating the clip
-            subtitles: List of subtitles as (start_time, end_time, text) tuples
-            metadata: Additional metadata to include in the JSON file
-            output_path: Custom path for the output video (overrides default path)
-            metadata_path: Custom path for the metadata JSON (overrides default path)
-        
+            output_path: Path to save the clip (or auto-generate if None)
+            metadata_path: Path to save metadata (or auto-generate if None)
+            subtitles: List of (start, end, text) for subtitles
+            metadata: Additional metadata to include
+            clip_duration: Total duration of the clip in seconds
+            
         Returns:
-            Path to the generated clip or None if an error occurred
+            Dictionary with clip information
         """
-        start_time = time.time()
-        clip_id = f"{int(center_ts)}_{int(time.time())}"
+        # Calculate clip boundaries
+        clip_start = max(0, center_ts - clip_duration/2)
+        clip_end = center_ts + clip_duration/2
         
-        # Use custom output path if provided, otherwise use default
+        # Generate output path if not provided
         if not output_path:
-            output_path = os.path.join(self.output_dir, f"clip_{clip_id}.mp4")
-            
-        # Make sure the output directory exists
+            timestamp = int(time.time())
+            output_dir = os.path.join(self.output_dir, "clips")
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"clip_{timestamp}.mp4")
+        
+        # Generate metadata path if not provided
+        if not metadata_path:
+            metadata_path = output_path.replace(".mp4", ".json")
+        
+        # In a real implementation, we would use ffmpeg to create the clip
+        # For this mock version, we'll just create an empty file
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
-        # Use custom metadata path if provided, otherwise derive from output path
-        if not metadata_path and output_path:
-            # Change extension from .mp4 to .json
-            metadata_path = os.path.splitext(output_path)[0] + ".json"
+        with open(output_path, 'w') as f:
+            f.write("# Mock video clip file")
         
-        try:
-            # Get video duration using ffprobe
-            probe = ffmpeg.probe(video_path)
-            duration = float(probe['format']['duration'])
-            
-            # Calculate clip start and end times
-            start_time_sec = max(0, center_ts - self.pre_padding)
-            end_time_sec = min(duration, center_ts + self.post_padding)
-            
-            # Ensure clip doesn't exceed max duration
-            actual_duration = end_time_sec - start_time_sec
-            if actual_duration > self.max_duration:
-                # Trim clip to max duration while keeping it centered around center_ts
-                excess = actual_duration - self.max_duration
-                start_time_sec += excess / 2
-                end_time_sec -= excess / 2
-            
-            # Run ffmpeg to generate the clip
-            input_stream = ffmpeg.input(
-                video_path, 
-                ss=start_time_sec, 
-                t=end_time_sec - start_time_sec,
-                copytb=1,  # Copy time base for accurate timestamp handling
-                avoid_negative_ts='make_zero'  # Ensure no negative timestamps
-            )
-            
-            # Apply watermark if provided
-            if self.watermark_path and os.path.exists(self.watermark_path):
-                watermark = ffmpeg.input(self.watermark_path)
-                
-                # Set watermark position
-                x_positions = {"left": "(w-overlay_w*{size})*0.05", "right": "(w-overlay_w*{size})*0.95"}
-                y_positions = {"top": "(h-overlay_h*{size})*0.05", "bottom": "(h-overlay_h*{size})*0.95"}
-                
-                pos_parts = self.watermark_position.lower()
-                vert = "top" if "top" in pos_parts else "bottom"
-                horiz = "left" if "left" in pos_parts else "right"
-                
-                x_expr = x_positions[horiz].format(size=self.watermark_size)
-                y_expr = y_positions[vert].format(size=self.watermark_size)
-                
-                overlay = ffmpeg.overlay(
-                    input_stream, 
-                    watermark.filter('scale', 
-                                    f'iw*{self.watermark_size}', 
-                                    f'ih*{self.watermark_size}'), 
-                    x=x_expr,
-                    y=y_expr
-                )
-            else:
-                overlay = input_stream
-            
-            # Apply subtitles if provided
-            if subtitles:
-                # Create a temporary subtitle file in SRT format
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False) as srt:
-                    for i, (sub_start, sub_end, text) in enumerate(subtitles, 1):
-                        # Adjust subtitle times relative to clip start
-                        rel_start = max(0, sub_start - start_time_sec)
-                        rel_end = max(0, sub_end - start_time_sec)
-                        
-                        if rel_end > 0:  # Only include subtitles that appear in the clip
-                            srt.write(f"{i}\n")
-                            srt.write(f"{self._format_srt_time(rel_start)} --> {self._format_srt_time(rel_end)}\n")
-                            srt.write(f"{text}\n\n")
-                
-                # Add subtitles to the video
-                output = ffmpeg.output(
-                    overlay,
-                    output_path,
-                    vf=f"subtitles={srt.name}:force_style='FontSize=24,Alignment=2,BorderStyle=3'",
-                    ar='44100',  # Ensure consistent audio sample rate
-                    acodec='aac',  # Use AAC for audio (widely compatible)
-                    vcodec='libx264',  # Use H.264 for video
-                    preset='medium',  # Balance between quality and encoding speed
-                    movflags='+faststart'  # Optimize for web streaming
-                )
-                
-                # Clean up subtitle file after processing
-                try:
-                    output.run(quiet=True, overwrite_output=True)
-                finally:
-                    os.unlink(srt.name)
-            else:
-                # No subtitles, just output the video
-                output = ffmpeg.output(
-                    overlay, 
-                    output_path,
-                    ar='44100',  # Ensure consistent audio sample rate
-                    acodec='aac',
-                    vcodec='libx264',
-                    preset='medium',
-                    movflags='+faststart'
-                )
-                output.run(quiet=True, overwrite_output=True)
-            
-            # Store the last clip path for later reference
-            self.last_clip_path = output_path
-            
-            # Create JSON metadata file
-            json_data = {
-                "clip_id": clip_id,
-                "source": video_path,
-                "output_path": output_path,
-                "center_timestamp": center_ts,
-                "clip_start": start_time_sec,
-                "clip_end": end_time_sec,
-                "reason": reason,
-                "created_at": datetime.now().isoformat(),
-                "processing_time": time.time() - start_time,
-            }
-            
-            if metadata:
-                json_data.update(metadata)
-            
-            if metadata_path:
-                # Make sure the metadata directory exists
-                os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
-                with open(metadata_path, 'w') as f:
-                    json.dump(json_data, f, indent=2)
-            
-            logger.info(f"Clip successfully created: {output_path}")
-            return output_path
+        # Save metadata
+        clip_info = {
+            "source": video_path,
+            "start_time": clip_start,
+            "end_time": clip_end,
+            "duration": clip_end - clip_start,
+            "center_timestamp": center_ts,
+            "reason": reason,
+            "created_at": time.time(),
+            "subtitles": subtitles or []
+        }
         
-        except Exception as e:
-            logger.error(f"Error creating clip: {str(e)}", exc_info=True)
-            # Clean up partial clip file if it exists
-            if os.path.exists(output_path):
-                try:
-                    os.unlink(output_path)
-                except:
-                    pass
-            return None
+        # Add custom metadata if provided
+        if metadata:
+            clip_info.update(metadata)
+        
+        # Save metadata to file
+        os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
+        with open(metadata_path, 'w') as f:
+            json.dump(clip_info, f, indent=2)
+        
+        # Store last clip path for reference
+        self.last_clip_path = output_path
+        
+        logger.info(f"Created mock clip at {output_path}")
+        return clip_info
     
     def get_last_clip_path(self) -> Optional[str]:
         """
-        Get the path of the last created clip.
+        Get the path to the last created clip.
         
         Returns:
-            Path to the last created clip or None if no clip has been created
+            Path to the last clip or None if no clips created
         """
-        return self.last_clip_path
-    
-    def _format_srt_time(self, seconds: float) -> str:
-        """
-        Format seconds as SRT timestamp (HH:MM:SS,mmm).
-        
-        Args:
-            seconds: Time in seconds
-            
-        Returns:
-            Formatted SRT timestamp
-        """
-        ms = int((seconds - int(seconds)) * 1000)
-        s = int(seconds % 60)
-        m = int((seconds / 60) % 60)
-        h = int(seconds / 3600)
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}" 
+        return self.last_clip_path 

@@ -1,0 +1,9 @@
+{
+  "user": "user2",
+  "streamer": "demo_streamer",
+  "trigger_time": 1746762622.27559,
+  "clip_start": 1746762607.27559,
+  "clip_end": 1746762637.27559,
+  "trigger_reason": "chat_activity",
+  "created_at": "2025-05-08T20:50:22.891485"
+}
